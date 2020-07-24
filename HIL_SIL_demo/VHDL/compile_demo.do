@@ -1,0 +1,10 @@
+vcom -work work -2008 -explicit -stats=none parameters.vhd
+vcom -work work -2008 -explicit -stats=none pid_to_pwm.vhd
+vcom -work work -2008 -explicit -stats=none pwm.vhd
+vcom -work work -2008 -explicit -stats=none encoder.vhd
+vcom -work work -2008 -explicit -stats=none average.vhd
+vcom -work work -2008 -explicit -stats=none pulse_gen.vhd
+vcom -work work -2008 -explicit -stats=none pos_to_rad.vhd
+vcom -work work -2008 -explicit -stats=none plant.vhd
+vcom -work work -2008 -explicit -stats=none testset_demo.vhd
+vcom -work work -2008 -explicit -stats=none testbench_demo.vhd
