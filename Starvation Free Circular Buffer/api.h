@@ -1,3 +1,12 @@
+// =========================================================
+// AUTHOR     : Ricardo Ampudia
+// CREATE DATE     : 02/2020
+// PURPOSE     :   RTS 
+// DESCRIPTION  : Small library to enable communication of 
+// two independent processes with a shared memory using a 
+// FIFO buffer.
+//==========================================================
+
 #ifndef __API_H__
 #define __API_H__
 
@@ -8,11 +17,13 @@
 #include "InfoFIFO.h"
 #include "memmap.h"
 
+//Initializes buffer configuration
 void initFifoInfo(int bufferSize){
     BUFFER_SIZE = bufferSize;
     
 }
 
+//Creates FIFO channel for communication
 int createFifo(int* shmaddr, int size){
     
     struct Buffer FIFO;
@@ -27,12 +38,14 @@ int createFifo(int* shmaddr, int size){
     
 }
 
+//Returns the pointer to the shared memory address
 int* openFifo(int* shmaddr){
     int *ptr = shmaddr;
     return ptr;
 }
 
 
+//Read stored data in the buffer
 int readFifo(struct Buffer *buffer, int *rx){
     
     if(buffer->queueLength == 0) {
@@ -52,6 +65,7 @@ int readFifo(struct Buffer *buffer, int *rx){
     return 1;
 }
 
+//Writes data into the buffer
 int writeFifo(struct Buffer *buffer, int *tx){
     
     if (buffer->queueLength == BUFFER_SIZE){ 
