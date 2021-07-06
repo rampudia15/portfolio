@@ -1,7 +1,16 @@
 %To do:
-% Add remaining tests 5-10
-%Add titlting condition to remove VLP calculation
-% Add CF for ax and ay
+%Compare combinations of paremeters for tests
+%Add titlting condition to remove VLP calculations with a lot of
+%inclination
+%Add CF for ax and ay
+%Adjust start time during lift off where the barometric pressure drops
+
+%Parameters to play around with
+%<m,k> = <6,1> or <12,0.45>
+%Kc= [1.4,1] , f=1,2,3,...
+%Start time, end time (to discard pressure drop during lift off)
+%Filter values
+%Try 3RSS vs 4RSS calculation
 
 %Reset workspace
 clc;
@@ -25,8 +34,8 @@ rx_center=[1,1,0.2];
 Rx = rx_center;
 
 %Light channel parameters
-m=6; %Lambertian order
-k=1; %Calibration factor to account for lateral error deviation
+m=12; %Lambertian order
+k=0.45; %Calibration factor to account for lateral error deviation
 Aeff=5.2; %[mm^2]
 Pt=2.1; %[Watts]
 %A=[0.86; 1.06; 1.06; 1.29]; %Calibration of individual LEDs intensity
@@ -34,20 +43,16 @@ A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity
 W = [0.8904, 0.1723, 0.2330, 0.2253, 0.3489, 0.4214]; %Values for simple NN height estimation (not used)
     %h=W(1)*(W(2)*Pr1 + W(3)*Pr2 + W(4)*Pr3 + W(5)*Pr4))+W(6)
 
-%Load data logged from crazyflie tests
-%                           a=0.04, m=6, k=1  | m=9, k=0.7 | m=12, k=0.5
-%                           (m=11, k=0.44 gives good results also, and
-%                           calibration of ak=[0.86,1.06,1.06,1.29]         
-%                           3RSS improves the performance slightly
-%m=9 and k=0.55 but can't justify
-%With a=0.2, m=6, k=1, lowpassfilter(0.1,10), and true z, the MLE xy err is
-%0.16cm
-
-load("data/logcurve50_t1.mat")   % 28.67cm  | 27.38cm | 28.31cm | 29.54
-%load("data/logcurve50_t2.mat")  % 46.88cm  | 39.43cm | 38.18cm | 30.04
-%load("data/logcurve50_t3.mat")  % 23.77cm  | 19.508cm | 21.93cm (m=6,kc=0.5,0.7)(m=6,kc=1.4,1)
-%load("data/logcurve50_t4.mat")  % 24.57cm | 21. 386cm | 22.884cm (m=6,kc=1.4,1)
-%load("data/logcurve50_t5.mat")  % 32.97cm | 25.51cm | 26.31cm (m=6,kc=1.4,1) %Incomplete flight
+%Load data logged from crazyflie tests        
+    %~Errors with A=[1;1;1;1],kc=[1.4/f,1/f], %f=1,and 4RSS
+load("data/logcurve_t1.mat")  % 20cm | 23 cm
+%load("data/logcurve_t2.mat")  % 34cm | 28cm
+%load("data/logcurve_t3.mat")  % 22cm | 22cm
+%load("data/logcurve_t4.mat")  % 26cm | 25cm
+%load("data/logcurve_t5.mat")  %22cm | 22cm
+%load("data/logcurve_t6.mat")  %23cm | 23cm
+%load("data/logcurve_t7.mat")  %25cm | 29cm
+%load("data/logcurve_t8.mat")  %25cm | 21cm
 
 %Save logged data to local variables
     %x,y,z,roll,pitch,yaw
@@ -120,6 +125,10 @@ bar_ctr = 2;
 Rx_all = [];
 est_all = [];
 
+    %Containers to store angles at the time of VLP method computation
+all_roll = [];
+all_pitch = [];
+
     %Containers to store all individual h estimates to plot at the end
 all_h = []; %Real height
 all_h_pr = []; %Estimate from simple NN approach, h=k*(a1*Pr1 + a2*Pr2 + a3*Pr3 + a4*Pr4))+o, not used
@@ -134,14 +143,13 @@ pz=0.2;
 h_pr=0.2;
 h_bar=0.2;
 h_fus = 0.2;
-f=0.1; %Larger f means I trust the accelerometer more than the barometer
+f=1; %Larger f means I trust the accelerometer more than the barometer
 kc=[1.4/f,1/f];
 %sigma_w = std(Rx_az(1:40));
 %sigma_v = std(Rx_bar(1:40));
 %kc = (1/f)*[sqrt((2*sigma_w)/sigma_v); sigma_w/sigma_v];
 u=0; %Semaphore used to enable complementary filter calculation
 v=0; %Semaphore used to enable VLP calculation
-w=0; %Sempahore used to plot points in the trajectory 
 
 %Perform simulation
 for t=start_time:t_step:end_time %Time in seconds
@@ -163,10 +171,11 @@ for t=start_time:t_step:end_time %Time in seconds
     %Update ground truth coordinates of the receiver
     if (t == round(Rx_time_state(state_ctr)/10)*10)
         Rx=[rx_center(1)+Rx_x(state_ctr),rx_center(2)+Rx_y(state_ctr),rx_center(3)+Rx_z(state_ctr)];
-        if abs(Rx_roll(state_ctr)) > 1 || abs(Rx_pitch(state_ctr)) > 1
-            v=0;
-        else
+        if abs(Rx_roll(state_ctr)) < 1 || abs(Rx_pitch(state_ctr)) < 1
+        %if (abs(Rx_roll(state_ctr)) + abs(Rx_pitch(state_ctr))) < 2
             v=1;
+        else
+            v=0;
         end
         state_ctr = state_ctr + 1;      
     end
@@ -191,8 +200,8 @@ for t=start_time:t_step:end_time %Time in seconds
     if u==1
         %Difference equations from https://ieeexplore-ieee-org.ezproxy2.utwente.nl/stamp/stamp.jsp?tp=&arnumber=4101411
         %xn = xn-1 + vn-1*T + k*T(xp - x1)+ (T/2)*k*T*(xp-x1) + T/2*(T*az)
-        %pz = pz + vz*dt + kc(1)*dt*(h_bar - pz) + (dt/2)*kc(2)*(h_bar - pz) + (dt/2)*(dt*az);
-        pz = pz + vz*dt + kc(1)*dt*(h_pr - pz) + (dt/2)*kc(2)*(h_pr - pz) + (dt/2)*(dt*az);
+        pz = pz + vz*dt + kc(1)*dt*(h_bar - pz) + (dt/2)*kc(2)*(h_bar - pz) + (dt/2)*(dt*az);
+        %pz = pz + vz*dt + kc(1)*dt*(h_pr - pz) + (dt/2)*kc(2)*(h_pr - pz) + (dt/2)*(dt*az);
         %vn = vn-1 + k*T(xp-x1) + (T*az)
         vz = vz + kc(2)*dt*(h_bar - pz) + (dt*az);  
         
@@ -209,7 +218,7 @@ for t=start_time:t_step:end_time %Time in seconds
     end
  
     %Perform VLP method
-    if (t == round(Rx_time_pr(pr_ctr)/10)*10) && v
+    if (t == round(Rx_time_pr(pr_ctr)/10)*10)
             
         %Obtain power received at time t       
         Pr=[A(1)*Rx_Pr1(pr_ctr), A(2)*Rx_Pr2(pr_ctr), A(3)*Rx_Pr3(pr_ctr), A(4)*Rx_Pr4(pr_ctr)];
@@ -222,14 +231,17 @@ for t=start_time:t_step:end_time %Time in seconds
         D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr); 
     
         %Calculate x and y coordinates using the MLE method
-        [MLE_est_2D, ~] = MLE_method_2D(D_est,X,Y);
+        if v==1 %Check if parallel Rx/Tx can be assumed
+            [MLE_est_2D] = MLE_method_2D(D_est,X,Y);
+        end
+        v=0;
     
         %Calculate x and y coordinates using using the 3 strongest RSS signals
         %[D3, X3, Y3, Z3] = get_max_rss(D_est,X,Y,Z); 
         %[MLE_est_2D, ~] = MLE_method_2D(D3,X3,Y3);
     
         %Combine h and 2D estimates
-        MLE_est = [MLE_est_2D; h_fus];  
+        MLE_est = [MLE_est_2D; h_fus]; 
         
         %Increase Pr counter
         pr_ctr = pr_ctr + 1;
@@ -239,12 +251,8 @@ for t=start_time:t_step:end_time %Time in seconds
         MLE_all_err=[MLE_all_err MLE_err];
 
         %Save trajectory every ~0.5s
-        if w == 5
-            Rx_all = [Rx_all Rx'];
-            est_all = [est_all MLE_est];
-            w=0;
-        end
-        w=w+1;
+        Rx_all = [Rx_all Rx'];
+        est_all = [est_all MLE_est];
             
         %Store height estimates at the time of the VLP calculation
         all_h = [all_h Rx(3)];   
@@ -252,14 +260,18 @@ for t=start_time:t_step:end_time %Time in seconds
         all_h_bar = [all_h_bar h_bar];
         all_h_acc = [all_h_acc pz];
         all_h_fus = [all_h_fus h_fus];
+        
+        %Store angles at the time of the VLP calculation
+        all_roll = [all_roll Rx_roll(state_ctr)];
+        all_pitch = [all_pitch Rx_pitch(state_ctr)];
   
     end 
         
 end
 
 %Plots
+%Ground truth vs estimation - 3D
 figure(1)
-%hold on
     %Ground truth
 plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og')
 hold on
@@ -270,7 +282,6 @@ plot3(Tx1(1),Tx1(2),Tx1(3), 'b*');
 plot3(Tx2(1),Tx2(2),Tx2(3), 'g*');
 plot3(Tx3(1),Tx3(2),Tx3(3), 'r*');
 plot3(Tx4(1),Tx4(2),Tx4(3), 'k*');
-
 % for i=1:length(Rx_all)
 % plot3([est_all(1,i) Rx_all(1,i)], [est_all(2,i) Rx_all(2,i)], [est_all(3,i) Rx_all(3,i)], 'b');
 % end
@@ -283,6 +294,7 @@ zlabel('z')
 legend('Ground truth', 'Estimate', 'Tx1', 'Tx2', 'Tx3', 'Tx4','Trajectory');
 title('3D Drone trajectory - Ground truth vs estimation ');
 
+%Ground truth vs estimation - Height
 figure(2)
 hold on
 plot(all_h) %Ground truth
@@ -295,14 +307,27 @@ ylabel('height (m)')
 legend('Ground truth', 'Barometer', 'Accelerometer', 'Fused', 'NN Pr')
 title('Height trajectory - Ground truth vs estimations');
 
+%Plot to visualize the influence of inclination in error
+figure(3)
+plot(abs(all_pitch)+ abs(all_roll))
+hold on
+plot(MLE_all_err*10)
+xlabel('time step')
+ylabel('Error (m)')
+legend('abs(pitch)+abs(roll)', '10*Error')
+title('Error w.r.t. inclination');
+
+
+%Compute statistics
 disp("VLP 2D+h estimate: ");
 disp("Mean error: " + mean(MLE_all_err));
 disp("Median error: " + median(MLE_all_err));
 disp("Max error: " + max(MLE_all_err));
 disp("Std dev: " + std(MLE_all_err));
 
+%Routine to extract the furthest estimated distance out
 function [newD, newX, newY, newZ] = get_max_rss(D,X,Y,Z)
-%Routine to extract the weakest measurement out
+
     [~, index] = max(D);
     newX=[];
     newY=[];
@@ -320,6 +345,7 @@ function [newD, newX, newY, newZ] = get_max_rss(D,X,Y,Z)
     end
 end
 
+%Estimate distance assuming parallel Tx/Rx
 function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
     D_est = zeros(1,4);
     
@@ -328,7 +354,8 @@ function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
     end 
 end
 
-function [MLE_est, WMLE_est] = MLE_method_2D(D,X,Y)
+%Calculate x and y position using Maximum Likelihood Estimation method
+function [MLE_est] = MLE_method_2D(D,X,Y)
     n=length(X); 
     for i=1:n-1
         A(i,1) = 2*(X(i)-X(n));
@@ -337,5 +364,4 @@ function [MLE_est, WMLE_est] = MLE_method_2D(D,X,Y)
         W(i,i) = 1/(D(i)^2);
     end
     MLE_est=inv(A'*A)*A'*b;
-    WMLE_est= inv(A'*W*A)*A'*W*b;
 end
