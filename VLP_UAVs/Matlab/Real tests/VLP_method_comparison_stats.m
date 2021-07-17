@@ -1,8 +1,9 @@
-%Comparison of 3D RSS based methods
+%Script that compares 3D RSS based methods and computes statistics from 
+%different tests
 
 %Reset workspace
 clc;
-%clear all;
+clear all;
 close all;
 rng('default');
 
@@ -22,22 +23,17 @@ rx_center=[1,1,0.2];
 Rx = rx_center;
 
 %Light channel parameters
-m=6; %Lambertian order
-k=1; %Calibration factor to account for lateral error deviation
+m=12; %Lambertian order
+k=0.45; %Calibration factor to account for lateral error deviation
 Aeff=5.2; %[mm^2]
 Pt=2; %[Watts]
 %A=[0.86; 1.06; 1.06; 1.29]; %Calibration of individual LEDs intensity
 A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity
 
-%Containers to 
-% all_mean_2D_h = [];
-% all_median_2D_h = [];
-% all_max_2D_h = [];
-% all_std_2D_h =[];
-
 all_mean = [];
 all_median= [];
 all_max = [];
+all_min = [];
 all_std =[];
 
 for test=1:8
@@ -45,21 +41,21 @@ for test=1:8
     %Load data logged from crazyflie tests  
     switch test
         case 1
-            load("data/logcurve_t1.mat")  % 20cm | 23 cm
+            load("data/logcurve_t1.mat")  
         case 2
-            load("data/logcurve_t2.mat")  % 34cm | 28cm
+            load("data/logcurve_t2.mat")  
         case 3
-            load("data/logcurve_t3.mat")  % 22cm | 22cm
+            load("data/logcurve_t3.mat")  
         case 4
-            load("data/logcurve_t4.mat")  % 26cm | 25cm
+            load("data/logcurve_t4.mat")  
         case 5
-            load("data/logcurve_t5.mat")  % 22cm | 22cm
+            load("data/logcurve_t5.mat")  
         case 6
-            load("data/logcurve_t6.mat")  % 23cm | 23cm
+            load("data/logcurve_t6.mat")  
         case 7
-            load("data/logcurve_t7.mat")  % 25cm | 29cm
+            load("data/logcurve_t7.mat")  
         case 8
-            load("data/logcurve_t8.mat")  % 25cm | 21cm
+            load("data/logcurve_t8.mat")  
     end
           
 
@@ -96,7 +92,7 @@ for test=1:8
     Rx_ay = lowpass(Rx_ay, 0.1, 50);
     Rx_az = lowpass(Rx_az, 0.1, 50);
 
-        %Moving average filter for barometer (Maybe no filter here)
+        %Moving average filter for barometer
     B=1/5*ones(5,1); %Window length = 5 samples
     Rx_bar = filter(B,1,Rx_bar);
 
@@ -134,6 +130,7 @@ for test=1:8
     GN_est_3D = rx_center(1:3)';
     GN_err = 0;
     GN_all_err = [];
+    best_GN=[0;0;0.2];
 
         %Counters for the position of the logged data 
     state_ctr = 2;
@@ -158,7 +155,6 @@ for test=1:8
 
         %Containers to store all individual h estimates to plot at the end
     all_h = []; %Real height
-    all_h_pr = []; %Estimate from simple NN approach, h=k*(a1*Pr1 + a2*Pr2 + a3*Pr3 + a4*Pr4))+o, not used
     all_h_bar = []; %Barometer estimate
     all_h_acc = []; %Accelerometer estimate
     all_h_fus = []; %Fused estimate with complementary filter
@@ -178,177 +174,192 @@ for test=1:8
 
     h_pr=0.2;
     h_bar=0.2;
-    h_fus = 0.2;
+    h_fus = 0.2; 
+    pz0=0.2;
+    
+    %Complementary filter gains, kc for z and kc2 for x,y
     f=1; %Larger f means I trust the accelerometer more than the barometer
     kc=[1.4/f,1/f];
     f=0.05;
     kc2=[1.4/f,1/f];
-
-    %sigma_w = std(Rx_az(1:40));
-    %sigma_v = std(Rx_bar(1:40));
-    %kc = (1/f)*[sqrt((2*sigma_w)/sigma_v); sigma_w/sigma_v];
+    
+%     f=0.05; %Larger f means I trust the accelerometer more than the barometer
+%     sigma_w = std(Rx_az(1:40));
+%     sigma_v = std(Rx_bar(1:40));
+%     kc = (1/f)*[sqrt((2*sigma_w)/sigma_v); sigma_w/sigma_v];
+    
     u=0; %Semaphore used to enable complementary filter calculation
-    v=0; %Semaphore used to enable VLP calculation
-    vel=0;
 
     %Perform simulation
     for t=start_time:t_step:end_time %Time in seconds
-        t %Display time
-
-        %Advance counters until start time is reached
-        if (Rx_time_state(state_ctr) <= round(Rx_time_state(20)/10)*10)
-            state_ctr = state_ctr+1;
-            pr_ctr = pr_ctr+1;
-            acc_ctr = acc_ctr+1;
-            bar_ctr = bar_ctr+1;      
-        else
-            %Stop simulation if reached the end of any logged measurement
-            if state_ctr >= length(Rx_time_state) || pr_ctr >= length(Rx_time_pr) || acc_ctr >= length(Rx_time_acc) || bar_ctr >= length(Rx_time_bar) 
-                break
-            end
-
-            %Update ground truth coordinates of the receiver
-            if (t == round(Rx_time_state(state_ctr)/10)*10)
-                Rx=[rx_center(1)+Rx_x(state_ctr),rx_center(2)+Rx_y(state_ctr),rx_center(3)+Rx_z(state_ctr)];
-
-                state_ctr = state_ctr + 1;      
-            end
-
-            %Update accelerometer measurement
-            if (t == round(Rx_time_acc(acc_ctr)/10)*10)
-                dt=(Rx_time_acc(acc_ctr)-Rx_time_acc(acc_ctr-1))/1000;
-
-                %Acceleration calculation with rotation matrix and moving
-                %average filter of L=5
-    %             acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);Rx_yaw(state_ctr)])*[((Rx_ax(acc_ctr)+Rx_ax(acc_ctr-1)+Rx_ax(acc_ctr-2) +Rx_ax(acc_ctr-3) +Rx_ax(acc_ctr-4))/5-acc_bias(1))*9.81; 
-    %                 ( (Rx_ay(acc_ctr)+Rx_ay(acc_ctr-1)+Rx_ay(acc_ctr-2) +Rx_ay(acc_ctr-3) +Rx_ay(acc_ctr-4))/5 -acc_bias(2))*9.81; 
-    %                 ((Rx_az(acc_ctr)+Rx_az(acc_ctr-1)+Rx_az(acc_ctr-2) +Rx_az(acc_ctr-3) +Rx_az(acc_ctr-4))/5-acc_bias(3))*9.81];
-
-                %Acceleration calculation with rotation matrix
-                acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);Rx_yaw(state_ctr)])*[(Rx_ax(acc_ctr)-acc_bias(1))*9.81; 
-                    ( Rx_ay(acc_ctr)-acc_bias(2))*9.81; 
-                    ( Rx_az(acc_ctr)-acc_bias(3))*9.81];
-                ax = acc(1); 
-                ay = acc(2); 
-                az = acc(3); 
-                acc_ctr = acc_ctr + 1;
-                u=1; %Enable semaphore
-            end
-
-            %Update barometer measurement
-            if (t == round(Rx_time_bar(bar_ctr)/10)*10)
-                dt=(Rx_time_bar(bar_ctr)-Rx_time_bar(bar_ctr-1))/1000;
-                h_bar = Rx_bar(bar_ctr)- Rx_bar(1);  % + drift + h_pr*0.02
-                bar_ctr = bar_ctr + 1;
-                %u=1; %Enable semaphore
-            end
-
-            %Update complementary filter
-            if u==1
-                %Z estimate
-                %xn = xn-1 + vn-1*T + k*T(xp - x1)+ (T/2)*k*T*(xp-x1) + T/2*(T*az)
-                pz = pz + vz*dt + kc(1)*dt*(h_bar - pz) + (dt/2)*kc(2)*(h_bar - pz) + (dt/2)*(az*dt);
-                %pz = pz + vz*dt + kc(1)*dt*(h_pr - pz) + (dt/2)*kc(2)*(h_pr - pz) + (dt/2)*(dt*az);
-                %vn = vn-1 + k*T(xp-x1) + (T*az)
-                vz = vz + kc(2)*dt*(h_bar - pz) + (az*dt);  
-
-                %X,Y estimates
-                px = px + vx*dt + kc2(1)*dt*(MLE_est_2D(1) - px) + (dt/2)*kc2(2)*(MLE_est_2D(1) - px) + (dt/2)*(ax*dt);
-                vx = vx + kc2(2)*dt*(MLE_est_2D(1) - px) + (ax*dt); 
-
-                py = py + vy*dt + kc2(1)*dt*(MLE_est_2D(2) - py) + (dt/2)*kc2(2)*(MLE_est_2D(2) - py) + (dt/2)*(ay*dt);
-                vy = vy + kc2(2)*dt*(MLE_est_2D(2) - py) + (ay*dt); 
-
-                %Impose bounds for the estimates
-                if pz > 2
-                    h_fus = 2;
-                elseif pz < 0
-                    h_fus = 0;
-                else
-                    h_fus = pz;
-                end          
-
-                u=0; %Reset semaphore
-            end
-
-            %Perform VLP method
-            if (t == round(Rx_time_pr(pr_ctr)/10)*10)
-                dt=(Rx_time_pr(pr_ctr)-Rx_time_pr(pr_ctr-1))/1000;
-
-                %Obtain power received at time t       
-                Pr=[A(1)*Rx_Pr1(pr_ctr), A(2)*Rx_Pr2(pr_ctr), A(3)*Rx_Pr3(pr_ctr), A(4)*Rx_Pr4(pr_ctr)];
-
-                %Estimate distance between Txs and Rxs assuming that they are parallel
-                D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr); 
-
-                %Calculate x and y coordinates 
-                    %2D + h MLE method
-                [MLE_est_2D] = MLE_method_2D(D_est,X,Y);
-                %MLE_est_2D_h = [MLE_est_2D(1); MLE_est_2D(2); h_fus]; 
-                MLE_est_2D_h = [px; py; h_fus]; 
-
-                    %3D PSO method
-                pso_func = @(PSO_est_3D)obj_func_pso(PSO_est_3D,Pr,X,Y,Z)
-                [PSO_est_3D,fval,exitflag,output] = particleswarm(pso_func, 3, lb, ub);
-                PSO_est_3D = PSO_est_3D';
-
-                    %Iterative h, 3D GN
-                best_res = 100;
-                for h=1:0.01:2
-                    %Obtain D(h)
-                    D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr); 
-
-                    %Obtain 2D position
-                    GN_est_2D = LLS_method_2D(D_est,X,Y);
-                    %Take positive solution and height estimation
-                    GN_est_3D = abs([GN_est_2D(1); GN_est_2D(2); h]);
-                    %Calculate the LSE
-                    res = obj_func(GN_est_3D,D_est,X,Y,Z);
-
-                    %Take the result with the min LSE
-                    if res < best_res
-                        best_GN = GN_est_3D;
-                        best_res = res;
-                    end
-                end
-
-                %Increase Pr counter
-                pr_ctr = pr_ctr + 1;
-
-                %Calculate error using the Euclidean norm
-                MLE_err= norm(MLE_est_2D_h - Rx');
-                MLE_all_err=[MLE_all_err MLE_err];
-
-                GN_err= norm(best_GN - Rx');
-                GN_all_err=[GN_all_err GN_err];
-
-                PSO_err= norm(PSO_est_3D - Rx');
-                PSO_all_err=[PSO_all_err PSO_err];
-
-                %Save points in the trajectory
-                Rx_all = [Rx_all Rx'];
-                est_all_MLE = [est_all_MLE MLE_est_2D_h];
-                est_all_PSO = [est_all_PSO PSO_est_3D];
-                est_all_GN = [est_all_GN best_GN];
-
-                %Save height estimates
-                all_h = [all_h Rx(3)];   
-                all_h_pr = [all_h_pr h_pr];
-                all_h_bar = [all_h_bar h_bar];
-                all_h_acc = [all_h_acc pz];
-                all_h_fus = [all_h_fus h_fus];
-
-                %Save angle and state estimates 
-                all_roll = [all_roll Rx_roll(state_ctr)];
-                all_pitch = [all_pitch Rx_pitch(state_ctr)];
-                yaw = Rx_yaw(state_ctr);
-                all_x = [all_x Rx_x(state_ctr)];
-                all_y = [all_y Rx_y(state_ctr)];
-                all_ax = [all_ax ax];
-                all_ay = [all_ay ay];
-            end 
+    t %Display time
+    
+    %Advance counters until start time is reached
+    if (Rx_time_state(state_ctr) <= round(Rx_time_state(10)/10)*10)
+        state_ctr = state_ctr+1;
+        pr_ctr = pr_ctr+1;
+        acc_ctr = acc_ctr+1;
+        bar_ctr = bar_ctr+1;   
+    else
+        %Stop simulation if reached the end of any logged measurement
+        if state_ctr >= length(Rx_time_state) || pr_ctr >= length(Rx_time_pr) || acc_ctr >= length(Rx_time_acc) || bar_ctr >= length(Rx_time_bar)
+            break
         end
+
+        %Update ground truth coordinates of the receiver
+        if (t == round(Rx_time_state(state_ctr)/10)*10)
+            Rx=[rx_center(1)+Rx_x(state_ctr),rx_center(2)+Rx_y(state_ctr),rx_center(3)+Rx_z(state_ctr)];
+         
+            state_ctr = state_ctr + 1;      
+        end
+
+        %Update accelerometer measurement
+        if (t == round(Rx_time_acc(acc_ctr)/10)*10)
+            dt=(Rx_time_acc(acc_ctr)-Rx_time_acc(acc_ctr-1))/1000;         
+            %Acceleration calculation with rotation matrix and moving
+            %average filter of L=5 (forgive the ugly implementation)
+            acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);Rx_yaw(state_ctr)])*[((Rx_ax(acc_ctr)+Rx_ax(acc_ctr-1)+Rx_ax(acc_ctr-2) +Rx_ax(acc_ctr-3) +Rx_ax(acc_ctr-4))/5-acc_bias(1))*9.81; 
+                ( (Rx_ay(acc_ctr)+Rx_ay(acc_ctr-1)+Rx_ay(acc_ctr-2) +Rx_ay(acc_ctr-3) +Rx_ay(acc_ctr-4))/5 -acc_bias(2))*9.81; 
+                ((Rx_az(acc_ctr)+Rx_az(acc_ctr-1)+Rx_az(acc_ctr-2) +Rx_az(acc_ctr-3) +Rx_az(acc_ctr-4))/5-acc_bias(3))*9.81];
+            ax = acc(1); 
+            ay = acc(2); 
+            az = acc(3); 
+            acc_ctr = acc_ctr + 1;
+            u=1; %Enable semaphore
+        end
+
+        %Update barometer measurement
+        if (t == round(Rx_time_bar(bar_ctr)/10)*10)
+            dt=(Rx_time_bar(bar_ctr)-Rx_time_bar(bar_ctr-1))/1000;
+            h_bar = Rx_bar(bar_ctr)- Rx_bar(1);
+            bar_ctr = bar_ctr + 1;
+        end
+
+        %Update complementary filter
+        if u==1
+            %Z estimate
+            pz0 = vz*dt + kc(1)*dt*(h_bar - pz0) + (dt/2)*kc(2)*(h_bar - pz0) + (dt/2)*(az*dt); %delta pos with fused bar and acc data
+            alpha=0.1;
+            pz = (1-alpha)*(pz + pz0) + best_GN(3)*(alpha); %Long term bar 'zero drift' correction using VLP method
+            
+            %vn = vn-1 + k*T(xp-x1) + (T*az)
+            vz = vz + kc(2)*dt*(h_bar - pz) + (az*dt);  
+            
+            %X,Y estimates
+            px = px + vx*dt + kc2(1)*dt*(MLE_est_2D(1) - px) + (dt/2)*kc2(2)*(MLE_est_2D(1) - px) + (dt/2)*(ax*dt);
+            vx = vx + kc2(2)*dt*(MLE_est_2D(1) - px) + (ax*dt); 
+            
+            py = py + vy*dt + kc2(1)*dt*(MLE_est_2D(2) - py) + (dt/2)*kc2(2)*(MLE_est_2D(2) - py) + (dt/2)*(ay*dt);
+            vy = vy + kc2(2)*dt*(MLE_est_2D(2) - py) + (ay*dt); 
+            
+            %Impose bounds for the estimates
+            if pz > 2
+                h_fus = 2;
+            elseif pz < 0
+                h_fus = 0;
+            else
+                h_fus = pz;
+            end                    
+            u=0; %Reset semaphore
+        end
+       
+        %Perform VLP method
+        if (t == round(Rx_time_pr(pr_ctr)/10)*10)
+            dt=(Rx_time_pr(pr_ctr)-Rx_time_pr(pr_ctr-1))/1000;
+            
+            %Obtain power received at time t       
+            Pr=[A(1)*Rx_Pr1(pr_ctr), A(2)*Rx_Pr2(pr_ctr), A(3)*Rx_Pr3(pr_ctr), A(4)*Rx_Pr4(pr_ctr)];
+
+            %Estimate distance between Txs and Rxs assuming that they are parallel
+            D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr); 
+
+            %Calculate position with different methods
+            
+            %a) 2D + h MLE method
+            [MLE_est_2D] = MLE_method_2D(D_est,X,Y);
+            
+                %Recalculate the distance considering tilt information
+            xr=MLE_est_2D(1);
+            yr=MLE_est_2D(2);
+            
+            for i=1:4
+                inc_angle(i) = acosd((xr-X(i))*cosd(-Rx_yaw(state_ctr))*sind(-Rx_roll(state_ctr)) + ...
+                (yr-Y(i))*sind(-Rx_yaw(state_ctr))*sind(-Rx_roll(state_ctr)) + (h_fus - Z(i))*cosd(-Rx_roll(state_ctr))/D_est(i));
+            end
+            
+            for i=1:4
+                D_est2(i)= sqrt( (k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))); %Lambertian model
+            end 
+            
+            if(sum(isnan(D_est2))>0) %Check computation is real
+            else
+               [MLE_est_2D] = MLE_method_2D(D_est2,X,Y);
+            end
+                %Combine output of the complementary filter    
+            MLE_est_2D_h = [px; py; h_fus]; 
+            
+            %b) 3D PSO method
+            pso_func = @(PSO_est_3D)obj_func_pso(PSO_est_3D,Pr,X,Y,Z, Pt, Aeff, m, k)
+            [PSO_est_3D,fval,exitflag,output] = particleswarm(pso_func, 3, lb, ub);
+            PSO_est_3D = PSO_est_3D';
+            
+            %c) Iterative 2D+H method
+            best_res = 100;
+            for h=0:0.01:2
+                %Obtain D(h)
+                D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr); 
+                    
+                %Obtain 2D position
+                GN_est_2D = LLS_method_2D(D_est,X,Y);
+                %Take positive solution and height estimation
+                GN_est_3D = abs([GN_est_2D(1); GN_est_2D(2); h]);
+                %Calculate the LSE
+                res = obj_func(GN_est_3D,D_est,X,Y,Z);
+                
+                %Take the result with the min LSE
+                if res < best_res
+                    best_GN = GN_est_3D;
+                    best_res = res;
+                end
+            end
+ 
+            %Increase Pr counter
+            pr_ctr = pr_ctr + 1;
+
+            %Calculate error using the Euclidean norm
+            MLE_err= norm(MLE_est_2D_h - Rx');
+            MLE_all_err=[MLE_all_err MLE_err];
+            
+            GN_err= norm(best_GN - Rx');
+            GN_all_err=[GN_all_err GN_err];
+            
+            PSO_err= norm(PSO_est_3D - Rx');
+            PSO_all_err=[PSO_all_err PSO_err];
+
+            %Save points in the trajectory
+            Rx_all = [Rx_all Rx'];
+            est_all_MLE = [est_all_MLE MLE_est_2D_h];
+            est_all_PSO = [est_all_PSO PSO_est_3D];
+            est_all_GN = [est_all_GN best_GN];
+
+            %Save height estimates
+            all_h = [all_h Rx(3)];   
+            all_h_bar = [all_h_bar h_bar];
+            all_h_acc = [all_h_acc pz];
+            all_h_fus = [all_h_fus h_fus];
+
+            %Save angle and state estimates 
+            all_roll = [all_roll Rx_roll(state_ctr)];
+            all_pitch = [all_pitch Rx_pitch(state_ctr)];
+            yaw = Rx_yaw(state_ctr);
+            all_x = [all_x Rx_x(state_ctr)];
+            all_y = [all_y Rx_y(state_ctr)];
+            all_ax = [all_ax ax];
+            all_ay = [all_ay ay];
+        end 
     end
+end
+
     
     %Gather statistics across different tests
     all_mean(1, test) = mean(MLE_all_err);
@@ -366,18 +377,12 @@ for test=1:8
     all_mean(3, test) = mean(GN_all_err);
     all_median(3, test) = median(GN_all_err);
     all_max(3, test) = max(GN_all_err);
-    all_min(3, test) = min(PSO_all_err);
+    all_min(3, test) = min(GN_all_err);
     all_std(3, test) = std(GN_all_err);
     
-    for i=1:length(MLE_all_err)
-        all_err_MLE(i,test) = MLE_all_err(i);
-    end
-    for i=1:length(PSO_all_err)
-        all_err_PSO(i,test) = PSO_all_err(i);
-    end
-    for i=1:length(GN_all_err)
-        all_err_GN(i,test) = GN_all_err(i);
-    end
+    MLE_all_err = [];
+    PSO_all_err = [];
+    GN_all_err = [];
     
 end
 
@@ -427,86 +432,24 @@ x1 = 1:8;
 y1 = all_mean(1,:);
 yneg1=all_mean(1,:)-all_min(1,:);
 ypos1=all_mean(1,:)-all_max(1,:);
-errorbar(x1-0.2,y1,yneg1,ypos1,'s', 'LineWidth', 2, 'MarkerSize',10)
+errorbar(x1-0.2,y1,yneg1,ypos1,'s', 'LineWidth', 3, 'MarkerSize',12)
 hold on
 y2 = all_mean(2,:);
 yneg2=all_mean(2,:)-all_min(2,:);
 ypos2=all_mean(2,:)-all_max(2,:);
-errorbar(x1,y2,yneg2,ypos2,'s', 'LineWidth', 2, 'MarkerSize',10)
+errorbar(x1,y2,yneg2,ypos2,'s', 'LineWidth', 3, 'MarkerSize',12)
 
 y3 = all_mean(3,:);
 yneg3=all_mean(3,:)-all_min(3,:);
 ypos3=all_mean(3,:)-all_max(3,:);
-errorbar(x1+0.2,y3,yneg3,ypos3,'s', 'LineWidth', 2, 'MarkerSize',10)
-xlabel('Test number')
-ylabel('Error (m)')
-legend('Direct h + 2D MLE', '3D PSO', 'Indirect h + 2D LLS')
-title('Mean-error plots');
-
-%Boxplots visualization
-figure(6)
-k=1;
-lk(1)=1;
-for test=1:8
-    for j=1:length(all_err_MLE)
-        if all_err_MLE(j,test) == 0
-        else
-            p_all_err_MLE(k)=all_err_MLE(j,test);
-            k=k+1;
-        end
-    end
-    lk(test+1)=k;
-end
-
-lk=diff(lk);
-g_MLE = [zeros(lk(1), 1); ones(lk(2), 1); 2*ones(lk(3), 1); 3*ones(lk(4), 1);  4*ones(lk(5), 1);  5*ones(lk(6), 1); 6*ones(lk(7), 1); 7*ones(lk(8), 1)];
-boxplot(p_all_err_MLE,g)
-xlabel('Test number')
-ylabel('Error (m)')
-title('Box plots Direct h + 2D MLE');
-
-figure(7)
-k=1;
-lk(1)=1;
-for test=1:8
-    for j=1:length(all_err_PSO)
-        if all_err_PSO(j,test) == 0
-        else
-            p_all_err_PSO(k)=all_err_PSO(j,test);
-            k=k+1;
-        end
-    end
-    lk(test+1)=k;
-end
-
-lk=diff(lk);
-g_PSO = [zeros(lk(1), 1); ones(lk(2), 1); 2*ones(lk(3), 1); 3*ones(lk(4), 1);  4*ones(lk(5), 1);  5*ones(lk(6), 1); 6*ones(lk(7), 1); 7*ones(lk(8), 1)];
-boxplot(p_all_err_PSO,g)
-xlabel('Test number')
-ylabel('Error (m)')
-title('Box plots 3D PSO');
-
-figure(8)
-k=1;
-lk(1)=1;
-for test=1:8
-    for j=1:length(all_err_GN)
-        if all_err_GN(j,test) == 0
-        else
-            p_all_err_GN(k)=all_err_GN(j,test);
-            k=k+1;
-        end
-    end
-    lk(test+1)=k;
-end
-
-lk=diff(lk);
-g_GN = [zeros(lk(1), 1); ones(lk(2), 1); 2*ones(lk(3), 1); 3*ones(lk(4), 1);  4*ones(lk(5), 1);  5*ones(lk(6), 1); 6*ones(lk(7), 1); 7*ones(lk(8), 1)];
-boxplot(p_all_err_GN,g)
-xlabel('Test number')
-ylabel('Error (m)')
-title('Box plots Indirect h + 2D LLS');
-
+errorbar(x1+0.2,y3,yneg3,ypos3,'s', 'LineWidth', 3, 'MarkerSize',12)
+xlabel('Test number', 'FontSize', 24);
+ylabel('Error (m)', 'FontSize', 24);
+legend('2D+H (direct height estimation)', '3D PSO', '3D trilateration (indirect height estimation)', 'FontSize', 24);
+%title('Mean-error plots', 'FontSize', 24);
+set(gca,'FontSize',24)
+grid on
+grid minor
 
 %Estimate distance assuming parallel Tx/Rx
 function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
@@ -553,12 +496,6 @@ function R = rotation(angles)
 end
 
 function sum=obj_func(est,D,X,Y,Z)
-%     sum=0;  
-%     for i=1:length(X)
-%         sum = sum + (D(i) - sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-h)^2))^2;
-%     end 
-%     sum=sum/length(X);
-
     sum=0;  
     for i=1:length(X)
         sum = sum + (D(i) - sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2))^2;
@@ -567,12 +504,9 @@ function sum=obj_func(est,D,X,Y,Z)
     
 end
 
-function sum=obj_func_pso(est,Pr,X,Y,Z)
+function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
     sum=0;  
-    Pt=2;
-    Apd=5.2;
-    m=6;
-    C=Apd*(m+1)/(2*pi);
+    C=k*Apd*(m+1)/(2*pi);
     for i=1:length(X)
         sum = sum + ( C*(est(3)^(m+1))/sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2) - Pr(i)/Pt)^2;
     end 
