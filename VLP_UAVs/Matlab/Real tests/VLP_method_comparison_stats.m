@@ -305,7 +305,7 @@ for test=1:8
             
             %c) Iterative 2D+H method
             best_res = 100;
-            for h=0:0.01:2
+            for h=0:0.05:2
                 %Obtain D(h)
                 D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr); 
                     
@@ -488,9 +488,9 @@ function R = rotation(angles)
     p = deg2rad(angles(2)); %pitch in radians
     y = deg2rad(angles(3)); %yaw in radians
     
-    roll=inv([1 0 0    ; 0 cos(r) -sin(r); 0 sin(r) cos(r)])';
+    roll=inv([1 0 0    ; 0 cos(r) -sin(r); 0 sin(r) cos(r)]);
     pitch=([cos(p) 0 sin(p); 0 1 0; -sin(p) 0 cos(p)]);
-    yaw=inv([cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1])';
+    yaw=inv([cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1]);
     
    R=yaw*pitch*roll;
 end

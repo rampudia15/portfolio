@@ -161,7 +161,7 @@ pz0=0.2;
 %Complementary filter gains, kc for z and kc2 for x,y
 f=1; %Larger f means I trust the accelerometer more than the barometer
 kc=[1.4/f,1/f];
-f=0.05;
+f=0.1;
 kc2=[1.4/f,1/f];
 
 %     f=0.05; %Larger f means I trust the accelerometer more than the barometer
@@ -198,11 +198,11 @@ for t=start_time:t_step:end_time %Time in seconds
             dt=(Rx_time_acc(acc_ctr)-Rx_time_acc(acc_ctr-1))/1000;         
             %Acceleration calculation with rotation matrix and moving
             %average filter of L=5 (forgive the ugly implementation)
-            acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);Rx_yaw(state_ctr)])*[((Rx_ax(acc_ctr)+Rx_ax(acc_ctr-1)+Rx_ax(acc_ctr-2) +Rx_ax(acc_ctr-3) +Rx_ax(acc_ctr-4))/5-acc_bias(1))*9.81; 
+            acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);-Rx_yaw(state_ctr)])*[((Rx_ax(acc_ctr)+Rx_ax(acc_ctr-1)+Rx_ax(acc_ctr-2) +Rx_ax(acc_ctr-3) +Rx_ax(acc_ctr-4))/5-acc_bias(1))*9.81; 
                 ( (Rx_ay(acc_ctr)+Rx_ay(acc_ctr-1)+Rx_ay(acc_ctr-2) +Rx_ay(acc_ctr-3) +Rx_ay(acc_ctr-4))/5 -acc_bias(2))*9.81; 
                 ((Rx_az(acc_ctr)+Rx_az(acc_ctr-1)+Rx_az(acc_ctr-2) +Rx_az(acc_ctr-3) +Rx_az(acc_ctr-4))/5-acc_bias(3))*9.81];
-            ax = acc(1); 
-            ay = acc(2); 
+            ax = acc(1); %- w/yaw -90
+            ay = acc(2); %-
             az = acc(3); 
             acc_ctr = acc_ctr + 1;
             u=1; %Enable semaphore
@@ -454,7 +454,8 @@ function R = rotation(angles)
     p = deg2rad(angles(2)); %pitch in radians
     y = deg2rad(angles(3)); %yaw in radians
     
-    roll=inv([1 0 0    ; 0 cos(r) -sin(r); 0 sin(r) cos(r)])';
+    %ENU convention, CW: Roll, yaw - CCW: Pitch
+    roll=inv([1 0 0    ; 0 cos(r) -sin(r); 0 sin(r) cos(r)]);
     pitch=([cos(p) 0 sin(p); 0 1 0; -sin(p) 0 cos(p)]);
     yaw=inv([cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1])';
     
