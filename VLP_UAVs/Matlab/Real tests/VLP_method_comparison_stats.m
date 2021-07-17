@@ -283,8 +283,8 @@ for test=1:8
             yr=MLE_est_2D(2);
             
             for i=1:4
-                inc_angle(i) = acosd((xr-X(i))*cosd(-Rx_yaw(state_ctr))*sind(-Rx_roll(state_ctr)) + ...
-                (yr-Y(i))*sind(-Rx_yaw(state_ctr))*sind(-Rx_roll(state_ctr)) + (h_fus - Z(i))*cosd(-Rx_roll(state_ctr))/D_est(i));
+                inc_angle(i) = acosd((xr-X(i))*cosd(Rx_pitch(state_ctr))*sind(-Rx_roll(state_ctr)) + ...
+                (yr-Y(i))*sind(Rx_pitch(state_ctr))*sind(-Rx_roll(state_ctr)) + (h_fus - Z(i))*cosd(-Rx_roll(state_ctr))/D_est(i));
             end
             
             for i=1:4
