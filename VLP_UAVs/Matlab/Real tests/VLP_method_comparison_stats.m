@@ -87,7 +87,7 @@ for test=1:8
     Rx_time_bar = asl.time;
     Rx_bar = asl.asl - asl.asl(1); %Set starting position at 0m
 
-    %Apply filtering to raw signals
+    %Apply filtering to raw siLLSals
         %LP filter of accelerometer
     Rx_ax = lowpass(Rx_ax, 0.1, 50);
     Rx_ay = lowpass(Rx_ay, 0.1, 50);
@@ -127,11 +127,12 @@ for test=1:8
     PSO_err = 0;
     PSO_all_err = [];
 
-        %Iterative height method with GN
-    GN_est_3D = rx_center(1:3)';
-    GN_err = 0;
-    GN_all_err = [];
-    best_GN=[0;0;0.2];
+        %Iterative height method with LLS
+    LLS_est_3D = rx_center(1:3)';
+    LLS_err = 0;
+    LLS_all_err = [];
+    best_LLS=[0;0;0.2];
+    min_h=0; %Minimum height for method and statistics
 
         %Counters for the position of the logged data 
     state_ctr = 2;
@@ -143,7 +144,7 @@ for test=1:8
         %statistics at the end
     Rx_all = [];
     est_all_MLE = [];
-    est_all_GN = [];
+    est_all_LLS = [];
     est_all_PSO = [];
 
         %Complementary filter variables
@@ -162,13 +163,13 @@ for test=1:8
     h_pr=0.2;
     h_bar=0.2;
     h_fus = 0.2; 
+    h_bar0 = 0.2;
+    old_h_bar0 = 0.2;
     pz0=0.2;
     
     %Complementary filter gains, kc for z and kc2 for x,y
     f=2; %Larger f means I trust the accelerometer more than the barometer
     kc=[1.4/f,1/f];
-    f=0.05;
-    kc2=[1.4/f,1/f];
     
 %     f=0.05; %Larger f means I trust the accelerometer more than the barometer
 %     sigma_w = std(Rx_az(1:40));
@@ -176,8 +177,7 @@ for test=1:8
 %     kc = (1/f)*[sqrt((2*sigma_w)/sigma_v); sigma_w/sigma_v];
     
     u=0; %Semaphore used to enable complementary filter calculation
-    h_bar0 = 0.2;
-    old_h_bar0 = 0.2;
+    
 
     %Perform simulation
 for t=start_time:t_step:end_time %Time in seconds
@@ -223,7 +223,7 @@ for t=start_time:t_step:end_time %Time in seconds
                     h_bar0 = Rx_bar(bar_ctr);
                     %Long term drift correction
                     alpha= 0.005;
-                    h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_GN(3);
+                    h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_LLS(3);
                     old_h_bar0 = h_bar0;
             end
             bar_ctr = bar_ctr + 1;
@@ -289,20 +289,20 @@ for t=start_time:t_step:end_time %Time in seconds
             
             %c) Iterative 2D+H method
             best_res = 100;
-            for h=0:0.01:2
+            for h=min_h:0.01:2
                 %Obtain D(h)
                 D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr); 
                     
                 %Obtain 2D position
-                GN_est_2D = LLS_method_2D(D_est,X,Y);
+                LLS_est_2D = LLS_method_2D(D_est,X,Y);
                 %Take positive solution and height estimation
-                GN_est_3D = abs([GN_est_2D(1); GN_est_2D(2); h]);
+                LLS_est_3D = abs([LLS_est_2D(1); LLS_est_2D(2); h]);
                 %Calculate the LSE
-                res = obj_func(GN_est_3D,D_est,X,Y,Z);
+                res = obj_func(LLS_est_3D,D_est,X,Y,Z);
                 
                 %Take the result with the min LSE
                 if res < best_res
-                    best_GN = GN_est_3D;
+                    best_LLS = LLS_est_3D;
                     best_res = res;
                 end
             end
@@ -311,20 +311,22 @@ for t=start_time:t_step:end_time %Time in seconds
             pr_ctr = pr_ctr + 1;
 
             %Calculate error using the Euclidean norm
-            MLE_err= norm(MLE_est_2D_h - Rx');
-            MLE_all_err=[MLE_all_err MLE_err];
-            
-            GN_err= norm(best_GN - Rx');
-            GN_all_err=[GN_all_err GN_err];
-            
-            PSO_err= norm(PSO_est_3D - Rx');
-            PSO_all_err=[PSO_all_err PSO_err];
+            if Rx(3) > min_h
+                MLE_err= norm(MLE_est_2D_h - Rx');
+                MLE_all_err=[MLE_all_err MLE_err];
+
+                LLS_err= norm(best_LLS - Rx');
+                LLS_all_err=[LLS_all_err LLS_err];
+
+                PSO_err= norm(PSO_est_3D - Rx');
+                PSO_all_err=[PSO_all_err PSO_err];
+            end
 
             %Save points in the trajectory
             Rx_all = [Rx_all Rx'];
             est_all_MLE = [est_all_MLE MLE_est_2D_h];
             est_all_PSO = [est_all_PSO PSO_est_3D];
-            est_all_GN = [est_all_GN best_GN];
+            est_all_LLS = [est_all_LLS best_LLS];
         end 
     end
 end
@@ -343,15 +345,15 @@ end
     all_min(2, test) = min(PSO_all_err);
     all_std(2, test) = std(PSO_all_err);
     
-    all_mean(3, test) = mean(GN_all_err)
-    all_median(3, test) = median(GN_all_err);
-    all_max(3, test) = max(GN_all_err);
-    all_min(3, test) = min(GN_all_err);
-    all_std(3, test) = std(GN_all_err);
+    all_mean(3, test) = mean(LLS_all_err)
+    all_median(3, test) = median(LLS_all_err);
+    all_max(3, test) = max(LLS_all_err);
+    all_min(3, test) = min(LLS_all_err);
+    all_std(3, test) = std(LLS_all_err);
     
     MLE_all_err = [];
     PSO_all_err = [];
-    GN_all_err = [];
+    LLS_all_err = [];
     
 end
 
@@ -482,7 +484,7 @@ function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
     
 end
 
-function [MLE_est, iter, tol] = GN_method_3D(MLE_est,D,X,Y,Z,max_iter,tol)
+function [MLE_est, iter, tol] = LLS_method_3D(MLE_est,D,X,Y,Z,max_iter,tol)
     res=obj_func_3D(MLE_est,D,X,Y,Z);
     iter=0;
     alpha=1;
