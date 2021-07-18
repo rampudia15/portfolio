@@ -46,9 +46,10 @@ Rx_time_state = xyzrpy.time;
 Rx_x = xyzrpy.x;
 Rx_y = xyzrpy.y;
 Rx_z = xyzrpy.z;
-Rx_roll = xyzrpy.roll;
-Rx_pitch = xyzrpy.pitch;
-Rx_yaw = xyzrpy.yaw-90; %Rotate 90° so x and y of body frame matches reference frame
+%Rotate 90° so yaw is centered at 0°
+Rx_roll = xyzrpy.pitch;
+Rx_pitch = -xyzrpy.roll;
+Rx_yaw = xyzrpy.yaw-90; 
 
     %Power received
 Rx_time_pr = pr1234.time;
@@ -84,8 +85,8 @@ Rx_Pr3=lowpass(Rx_Pr3, 0.1, 10);
 Rx_Pr4=lowpass(Rx_Pr4, 0.1, 10); 
 
 %Determine acceleration bias and set as constant
-%acc_bias=[mean(Rx_ax(1:40)); mean(Rx_ay(1:40)); mean(Rx_az(1:40))];
-acc_bias=[mean(Rx_ax); mean(Rx_ay); mean(Rx_az)];
+acc_bias=[mean(Rx_ax(1:40)); mean(Rx_ay(1:40)); mean(Rx_az(1:40))];
+%acc_bias=[mean(Rx_ax); mean(Rx_ay); mean(Rx_az)];
 
 %Time parameters of the simulation 
 start_time = round(Rx_time_state(1)/10)*10;
@@ -158,11 +159,13 @@ h_bar=0.2;
 h_fus = 0.2; 
 pz0=0.2;
 
-%Complementary filter gains, kc for z and kc2 for x,y
-f=1; %Larger f means I trust the accelerometer more than the barometer
+%Complementary filter gain
+f=2; %Larger f means I trust the accelerometer more than the barometer
 kc=[1.4/f,1/f];
-f=0.1;
-kc2=[1.4/f,1/f];
+vel_drift = 0;
+pos_drift = 0;
+h_bar0 = 0.2;
+old_h_bar0 = 0.2;
 
 %     f=0.05; %Larger f means I trust the accelerometer more than the barometer
 %     sigma_w = std(Rx_az(1:40));
@@ -172,7 +175,7 @@ kc2=[1.4/f,1/f];
 u=0; %Semaphore used to enable complementary filter calculation
 
 for t=start_time:t_step:end_time %Time in seconds
-    t %Display time
+    %t %Display time
     
     %Advance counters until start time is reached
     if (Rx_time_state(state_ctr) <= round(Rx_time_state(10)/10)*10)
@@ -198,12 +201,11 @@ for t=start_time:t_step:end_time %Time in seconds
             dt=(Rx_time_acc(acc_ctr)-Rx_time_acc(acc_ctr-1))/1000;         
             %Acceleration calculation with rotation matrix and moving
             %average filter of L=5 (forgive the ugly implementation)
-            acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);-Rx_yaw(state_ctr)])*[((Rx_ax(acc_ctr)+Rx_ax(acc_ctr-1)+Rx_ax(acc_ctr-2) +Rx_ax(acc_ctr-3) +Rx_ax(acc_ctr-4))/5-acc_bias(1))*9.81; 
-                ( (Rx_ay(acc_ctr)+Rx_ay(acc_ctr-1)+Rx_ay(acc_ctr-2) +Rx_ay(acc_ctr-3) +Rx_ay(acc_ctr-4))/5 -acc_bias(2))*9.81; 
-                ((Rx_az(acc_ctr)+Rx_az(acc_ctr-1)+Rx_az(acc_ctr-2) +Rx_az(acc_ctr-3) +Rx_az(acc_ctr-4))/5-acc_bias(3))*9.81];
-            ax = acc(1); %- w/yaw -90
-            ay = acc(2); %-
-            az = acc(3); 
+            acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);Rx_yaw(state_ctr)])*[0;0;
+                (((Rx_az(acc_ctr)+Rx_az(acc_ctr-1)+Rx_az(acc_ctr-2) +Rx_az(acc_ctr-3) +Rx_az(acc_ctr-4))/5)-acc_bias(3))*9.81];
+            ax = acc(1);
+            ay = acc(2);
+            az = acc(3);
             acc_ctr = acc_ctr + 1;
             u=1; %Enable semaphore
         end
@@ -211,26 +213,26 @@ for t=start_time:t_step:end_time %Time in seconds
         %Update barometer measurement
         if (t == round(Rx_time_bar(bar_ctr)/10)*10)
             dt=(Rx_time_bar(bar_ctr)-Rx_time_bar(bar_ctr-1))/1000;
-            h_bar = Rx_bar(bar_ctr)- Rx_bar(1);
+            if (Rx_bar(bar_ctr) > 0)
+                    h_bar0 = Rx_bar(bar_ctr);
+                    %Long term drift correction
+                    alpha= 0.005;
+                    h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_GN(3);
+                    old_h_bar0 = h_bar0;
+            end
             bar_ctr = bar_ctr + 1;
         end
 
         %Update complementary filter
         if u==1
             %Z estimate
-            pz0 = vz*dt + kc(1)*dt*(h_bar - pz0) + (dt/2)*kc(2)*(h_bar - pz0) + (dt/2)*(az*dt); %delta pos with fused bar and acc data
-            alpha=0.1;
-            pz = (1-alpha)*(pz + pz0) + best_GN(3)*(alpha); %Long term bar 'zero drift' correction using VLP method
-            
+            pz = pz + vz*dt + kc(1)*dt*(h_bar - pz) + (dt/2)*kc(2)*(h_bar - pz) + (dt/2)*(az*dt); %delta pos with fused bar and acc data
+
             %vn = vn-1 + k*T(xp-x1) + (T*az)
-            vz = vz + kc(2)*dt*(h_bar - pz) + (az*dt);  
+            vz = vz + kc(2)*dt*(h_bar - pz) + (az*dt); 
             
-            %X,Y estimates
-            px = px + vx*dt + kc2(1)*dt*(MLE_est_2D(1) - px) + (dt/2)*kc2(2)*(MLE_est_2D(1) - px) + (dt/2)*(ax*dt);
-            vx = vx + kc2(2)*dt*(MLE_est_2D(1) - px) + (ax*dt); 
-            
-            py = py + vy*dt + kc2(1)*dt*(MLE_est_2D(2) - py) + (dt/2)*kc2(2)*(MLE_est_2D(2) - py) + (dt/2)*(ay*dt);
-            vy = vy + kc2(2)*dt*(MLE_est_2D(2) - py) + (ay*dt); 
+            vel_drift = vel_drift + az*dt;
+            pos_drift = pos_drift + vel_drift*dt  + 0.5*az*(dt^2);
             
             %Impose bounds for the estimates
             if pz > 2
@@ -253,8 +255,7 @@ for t=start_time:t_step:end_time %Time in seconds
             %Estimate distance between Txs and Rxs assuming that they are parallel
             D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr); 
 
-            %Calculate position with different methods
-            
+            %Calculate position with different methods           
             %a) 2D + h MLE method
             [MLE_est_2D] = MLE_method_2D(D_est,X,Y);
             
@@ -263,8 +264,8 @@ for t=start_time:t_step:end_time %Time in seconds
             yr=MLE_est_2D(2);
             
             for i=1:4
-                inc_angle(i) = acosd((xr-X(i))*cosd(Rx_pitch(state_ctr))*sind(-Rx_roll(state_ctr)) + ...
-                (yr-Y(i))*sind(Rx_pitch(state_ctr))*sind(-Rx_roll(state_ctr)) + (h_fus - Z(i))*cosd(-Rx_roll(state_ctr))/D_est(i));
+                inc_angle(i) = acosd((xr-X(i))*cosd(Rx_roll(state_ctr))*sind(Rx_pitch(state_ctr)) + ...
+                (yr-Y(i))*sind(Rx_roll(state_ctr))*sind(Rx_pitch(state_ctr)) + (h_fus - Z(i))*cosd(Rx_pitch(state_ctr))/D_est(i));
             end
             
             for i=1:4
@@ -275,8 +276,8 @@ for t=start_time:t_step:end_time %Time in seconds
             else
                [MLE_est_2D] = MLE_method_2D(D_est2,X,Y);
             end
-                %Combine output of the complementary filter    
-            MLE_est_2D_h = [px; py; h_fus]; 
+                %Combine output of the complementary filter
+            MLE_est_2D_h = [MLE_est_2D(1); MLE_est_2D(2); h_fus]; 
             
             %b) 3D PSO method
             pso_func = @(PSO_est_3D)obj_func_pso(PSO_est_3D,Pr,X,Y,Z, Pt, Aeff, m, k)
@@ -325,7 +326,7 @@ for t=start_time:t_step:end_time %Time in seconds
             %Save height estimates
             all_h = [all_h Rx(3)];   
             all_h_bar = [all_h_bar h_bar];
-            all_h_acc = [all_h_acc pz];
+            all_h_acc = [all_h_acc pos_drift];
             all_h_fus = [all_h_fus h_fus];
 
             %Save angle and state estimates 
@@ -398,6 +399,14 @@ legend('Ground truth', '3D PSO', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
 set(gca,'FontSize',16)
 grid
 
+figure
+plot(all_h);
+hold on
+plot(all_h_acc);
+plot(all_h_bar);
+plot(all_h_fus);
+legend('Ground truth', 'ACC', 'BAR', 'FUS');
+
 %Compute statistics
 disp("VLP 2D+h estimate: ");
 disp("Mean error: " + mean(MLE_all_err));
@@ -463,12 +472,6 @@ function R = rotation(angles)
 end
 
 function sum=obj_func(est,D,X,Y,Z)
-%     sum=0;  
-%     for i=1:length(X)
-%         sum = sum + (D(i) - sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-h)^2))^2;
-%     end 
-%     sum=sum/length(X);
-
     sum=0;  
     for i=1:length(X)
         sum = sum + (D(i) - sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2))^2;
@@ -479,10 +482,6 @@ end
 
 function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
     sum=0;  
-%     Pt=2;
-%     Apd=5.2;
-%     m=12;
-%     k=0.45;
     C=k*Apd*(m+1)/(2*pi);
     for i=1:length(X)
         sum = sum + ( C*(est(3)^(m+1))/sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2) - Pr(i)/Pt)^2;
