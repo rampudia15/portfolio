@@ -7,6 +7,26 @@ clear all;
 close all;
 rng('default');
 
+%Select test
+config=3;
+switch config
+    case 1 %Vertical case
+        m=6; %Lambertian order
+        k=1; %Optical gain (Gr)
+        min_h=1; %For statistics and 2D+Indirect H, here min_h=1 helps 2D+Indirect H
+        alpha=0.001; 
+    case 2
+        m=12;
+        k=1; 
+        min_h=0.21; %The drone has lift off
+        alpha=0.001; 
+    case 3
+        m=12;
+        k=0.47;
+        min_h=0.21; %The drone has lift off
+        alpha=0.007; %Here VLP is better so we can trust it more
+end
+
 %Fixed coordinates of the Tx stations [x,y,z]
 Tx1=[0.25, 1, 0];
 Tx2=[1, 1.75, 0];
@@ -23,19 +43,19 @@ rx_center=[1,1,0.2];
 Rx = rx_center;
 
 %Light channel parameters
-m=12; %Lambertian order
-k=0.45; %Calibration factor to account for lateral error deviation
+%m=12; %Lambertian order
+%k=0.45; %Calibration factor to account for lateral error deviation
 Aeff=5.2; %[mm^2]
 Pt=2; %[Watts]
 %A=[0.86; 1.06; 1.06; 1.29]; %Calibration of individual LEDs intensity
 A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity
 
 %Load data logged from crazyflie tests        
-%load("data/logcurve_t1.mat") 
+load("data/logcurve_t1.mat") 
 %load("data/logcurve_t2.mat")
 %load("data/logcurve_t3.mat")
 %load("data/logcurve_t4.mat")
-load("data/logcurve_t5.mat")
+%load("data/logcurve_t5.mat")
 %load("data/logcurve_t6.mat")
 %load("data/logcurve_t7.mat")
 %load("data/logcurve_t8.mat")
@@ -113,7 +133,7 @@ LLS_est_3D = rx_center(1:3)';
 LLS_err = 0;
 LLS_all_err = [];
 best_LLS=[0;0;0.2];
-min_h=0;
+%min_h=0;
 
     %Counters for the position of the logged data 
 state_ctr = 2;
@@ -163,7 +183,7 @@ h_bar0 = 0.2;
 old_h_bar0 = 0.2;
 
 %Complementary filter gain
-f=2; %Larger f means I trust the accelerometer more than the barometer
+f=1; %Larger f means I trust the accelerometer more than the barometer
 kc=[1.4/f,1/f];
 vel_drift = 0;
 pos_drift = 0;
@@ -217,7 +237,7 @@ for t=start_time:t_step:end_time %Time in seconds
             if (Rx_bar(bar_ctr) > 0)
                     h_bar0 = Rx_bar(bar_ctr);
                     %Long term drift correction
-                    alpha= 0.005;
+                    %alpha= 0.005;
                     h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_LLS(3);
                     old_h_bar0 = h_bar0;
             end
