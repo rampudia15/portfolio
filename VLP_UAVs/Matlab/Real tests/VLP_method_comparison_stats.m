@@ -18,12 +18,12 @@ switch config
     case 2 %Semi-angle characterization
         m=12;
         k=1; 
-        min_h=0.21; %The drone has lift off
+        min_h=0.25; %The drone has lift off
         alpha=0.001; 
     case 3 %Horizontal characterization
         m=12;
         k=0.47;
-        min_h=0.21; %The drone has lift off
+        min_h=0.25; %The drone has lift off
         alpha=0.007; %Here VLP is better so we can trust it more
 end
 
@@ -217,7 +217,7 @@ for t=start_time:t_step:end_time %Time in seconds
 
         %Update ground truth coordinates of the receiver
         if (t == round(Rx_time_state(state_ctr)/10)*10)
-            Rx=[rx_center(1)+Rx_x(state_ctr),rx_center(2)+Rx_y(state_ctr),rx_center(3)+Rx_z(state_ctr)];
+            Rx=[rx_center(1)+Rx_x(state_ctr),rx_center(2)+Rx_y(state_ctr),rx_center(3)+Rx_z(state_ctr)]; %Apply offset to reference of the system
          
             state_ctr = state_ctr + 1;      
         end

@@ -18,12 +18,12 @@ switch config
     case 2 %Semi-angle characterization
         m=12;
         k=1; 
-        min_h=0.21; %The drone has lift off
+        min_h=0.25; %The drone has lift off
         alpha=0.001; 
     case 3 %Horizontal characterization
         m=12;
         k=0.47;
-        min_h=0.21; %The drone has lift off
+        min_h=0.25; %The drone has lift off
         alpha=0.007; %Here VLP is better so we can trust it more
 end
 
@@ -212,7 +212,7 @@ for t=start_time:t_step:end_time %Time in seconds
 
         %Update ground truth coordinates of the receiver
         if (t == round(Rx_time_state(state_ctr)/10)*10)
-            Rx=[rx_center(1)+Rx_x(state_ctr),rx_center(2)+Rx_y(state_ctr),rx_center(3)+Rx_z(state_ctr)];
+            Rx=[rx_center(1)+Rx_x(state_ctr),rx_center(2)+Rx_y(state_ctr),rx_center(3)+Rx_z(state_ctr)]; %Apply offset to reference of the system
          
             state_ctr = state_ctr + 1;      
         end
@@ -375,9 +375,9 @@ plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), '*r')
 plot3(est_all_LLS(1,:), est_all_LLS(2,:), est_all_LLS(3,:), '*b')
 %plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), '*k')
     %Fixed transmitters
-plot3(Tx1(1),Tx1(2),Tx1(3), 'bo', 'MarkerFaceColor','b');
-plot3(Tx2(1),Tx2(2),Tx2(3), 'go', 'MarkerFaceColor','g');
-plot3(Tx3(1),Tx3(2),Tx3(3), 'ro', 'MarkerFaceColor','r');
+plot3(Tx1(1),Tx1(2),Tx1(3), 'ko', 'MarkerFaceColor','k');
+plot3(Tx2(1),Tx2(2),Tx2(3), 'ko', 'MarkerFaceColor','k');
+plot3(Tx3(1),Tx3(2),Tx3(3), 'ko', 'MarkerFaceColor','k');
 plot3(Tx4(1),Tx4(2),Tx4(3), 'ko','MarkerFaceColor','k');
 % for i=1:length(Rx_all)
 % plot3([est_all_MLE(1,i) Rx_all(1,i)], [est_all_MLE(2,i) Rx_all(2,i)], [est_all_MLE(3,i) Rx_all(3,i)], 'b');
@@ -392,7 +392,7 @@ ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
 %legend('Ground truth', '2D+H (direct h estimation)', '3D LLS (indirect h estimation)', '3D PSO', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
 %,'Trajectory');
-legend('Ground truth', '2D+H', '3D LLS', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
+legend('Ground truth', '2D+H', '3D LLS', 'TXs', 'FontSize', 20);
 %title('3D Drone trajectory - Ground truth vs estimations', 'FontSize', 20);
 set(gca,'FontSize',16)
 grid
