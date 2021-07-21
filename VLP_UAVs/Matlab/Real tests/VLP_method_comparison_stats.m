@@ -10,17 +10,17 @@ rng('default');
 %Select test
 config=3;
 switch config
-    case 1 %Vertical case
+    case 1 %Vertical characterization
         m=6; %Lambertian order
         k=1; %Optical gain (Gr)
         min_h=1; %For statistics and 2D+Indirect H, here min_h=1 helps 2D+Indirect H
         alpha=0.001; 
-    case 2
+    case 2 %Semi-angle characterization
         m=12;
         k=1; 
         min_h=0.21; %The drone has lift off
         alpha=0.001; 
-    case 3
+    case 3 %Horizontal characterization
         m=12;
         k=0.47;
         min_h=0.21; %The drone has lift off
