@@ -8,7 +8,7 @@ close all;
 rng('default');
 
 %Select test
-config=3;
+config=2;
 switch config
     case 1 %Vertical characterization
         m=6; %Lambertian order
@@ -16,10 +16,11 @@ switch config
         min_h=1; %For statistics and 2D+Indirect H, here min_h=1 helps 2D+Indirect H
         alpha=0.001; 
     case 2 %Semi-angle characterization
-        m=12;
-        k=1; 
+        m=14; %datashet
+        k=1;  %no optical gain
+        Pt=2.7*0.5; %Pnom*Duty
         min_h=0.25; %The drone has lift off
-        alpha=0.001; 
+        alpha=0.003;
     case 3 %Horizontal characterization
         m=12;
         k=0.47;
@@ -46,7 +47,7 @@ Rx = rx_center;
 %m=12; %Lambertian order
 %k=0.47; %Calibration factor to account for lateral error deviation
 Aeff=5.2; %[mm^2]
-Pt=2; %[Watts]
+%Pt=2; %[Watts]
 %A=[0.86; 1.06; 1.06; 1.29]; %Calibration of individual LEDs intensity
 A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity
 
@@ -55,6 +56,8 @@ all_median= [];
 all_max = [];
 all_min = [];
 all_std =[];
+all_h_err = [];
+all_h =[];
 
 for test=1:8
     
@@ -92,10 +95,10 @@ for test=1:8
    
         %Power received
     Rx_time_pr = pr1234.time;
-    Rx_Pr1 = pr1234.Pr1;
-    Rx_Pr2 = pr1234.Pr2;
-    Rx_Pr3 = pr1234.Pr3;
-    Rx_Pr4 = pr1234.Pr4;
+    Rx_Pr1 = pr1234.Pr1*pi/4; %To retrieve Amplitude, due to properties of the square wave
+    Rx_Pr2 = pr1234.Pr2*pi/4;
+    Rx_Pr3 = pr1234.Pr3*pi/4;
+    Rx_Pr4 = pr1234.Pr4*pi/4;
 
         %Accelerometer
     Rx_time_acc = axayaz.time;
@@ -292,7 +295,8 @@ for t=start_time:t_step:end_time %Time in seconds
             end
             
             for i=1:4
-                D_est2(i)= sqrt( (k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))); %Lambertian model
+                D_est2(i)= sqrt( (k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i)));
+                %D_est2(i)= sqrt( (Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))*Gr(inc_angle(i))); %Lambertian model
             end 
             
             if(sum(isnan(D_est2))>0) %Check computation is real
@@ -309,7 +313,7 @@ for t=start_time:t_step:end_time %Time in seconds
             
             %c) Iterative 2D+H method
             best_res = 100;
-            for h=min_h:0.01:2
+            for h=0:0.01:2
                 %Obtain D(h)
                 D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr); 
                     
@@ -340,6 +344,10 @@ for t=start_time:t_step:end_time %Time in seconds
 
                 PSO_err= norm(PSO_est_3D - Rx');
                 PSO_all_err=[PSO_all_err PSO_err];
+                
+                %Save height estimates
+                h_err = abs(Rx(3) - h_fus);   
+                all_h_err = [all_h_err h_err];
             end
 
             %Save points in the trajectory
@@ -347,6 +355,7 @@ for t=start_time:t_step:end_time %Time in seconds
             est_all_MLE = [est_all_MLE MLE_est_2D_h];
             est_all_PSO = [est_all_PSO PSO_est_3D];
             est_all_LLS = [est_all_LLS best_LLS];
+            
         end 
     end
 end
@@ -371,11 +380,20 @@ end
     all_min(3, test) = min(LLS_all_err);
     all_std(3, test) = std(LLS_all_err);
     
+    all_h(test) = mean(all_h_err);
+    all_max_h(test) = max(all_h_err);
+    
     MLE_all_err = [];
     PSO_all_err = [];
     LLS_all_err = [];
+    all_h_err = [];
     
 end
+
+mean_improv = (mean(all_mean(3,:)) - mean(all_mean(1,:)) )/ mean(all_mean(3,:))
+median_improv = (mean(all_median(3,:)) - mean(all_median(1,:)) )/ mean(all_median(3,:))
+max_improv = (mean(all_max(3,:)) - mean(all_max(1,:)) )/ mean(all_max(3,:))
+std_improv = (mean(all_std(3,:)) - mean(all_std(1,:)) )/ mean(all_std(3,:))
 
 %Plots
 figure(1)
@@ -418,29 +436,66 @@ ylabel('Standard deviation of the error')
 legend('Direct h + 2D MLE', '3D PSO', 'Indirect h + 2D LLS')
 title('Standard deviation of error of different methods');
 
+green= [0.4660, 0.6740, 0.1880];
+blue= [0, 0.4470, 0.7410];
+red=[0.8500, 0.3250, 0.0980];
+grey=[0.25, 0.25, 0.25];
+
 figure(5)
 x1 = 1:8;
 y1 = all_mean(1,:);
 yneg1=all_mean(1,:)-all_min(1,:);
 ypos1=all_mean(1,:)-all_max(1,:);
-errorbar(x1-0.2,y1,yneg1,ypos1,'s', 'LineWidth', 3, 'MarkerSize',12)
+errorbar(x1-0.2,y1,yneg1,ypos1,'s', 'Color', red, 'LineWidth', 3, 'MarkerSize',12)
 hold on
 y2 = all_mean(2,:);
 yneg2=all_mean(2,:)-all_min(2,:);
 ypos2=all_mean(2,:)-all_max(2,:);
-errorbar(x1,y2,yneg2,ypos2,'s', 'LineWidth', 3, 'MarkerSize',12)
-
+errorbar(x1,y2,yneg2,ypos2,'s', 'Color', grey, 'LineWidth', 3, 'MarkerSize',12)
 y3 = all_mean(3,:);
 yneg3=all_mean(3,:)-all_min(3,:);
 ypos3=all_mean(3,:)-all_max(3,:);
-errorbar(x1+0.2,y3,yneg3,ypos3,'s', 'LineWidth', 3, 'MarkerSize',12)
-xlabel('Test number', 'FontSize', 24);
-ylabel('Error (m)', 'FontSize', 24);
-legend('2D+H (direct height estimation)', '3D PSO', '3D trilateration (indirect height estimation)', 'FontSize', 24);
+errorbar(x1+0.2,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
+xlabel('Test number', 'FontSize', 16);
+ylabel('Error (m)', 'FontSize', 16);
+legend('2D+Direct H', '3D PSO', '2D+Indirect H', 'FontSize', 16);
 %title('Mean-error plots', 'FontSize', 24);
-set(gca,'FontSize',24)
+set(gca,'FontSize',16)
+xlim([0.5 8.5])
+ylim([0 2])
+height=500;
+width=900;
+set(gcf,'position',[0,0,width,height])
 grid on
 grid minor
+
+figure(6)
+x1 = 1:8;
+y1 = all_mean(1,:);
+yneg1=all_mean(1,:)-all_min(1,:);
+ypos1=all_mean(1,:)-all_max(1,:);
+errorbar(x1-0.1,y1,yneg1,ypos1,'s', 'Color', red, 'LineWidth', 3, 'MarkerSize',12)
+hold on
+y3 = all_mean(3,:);
+yneg3=all_mean(3,:)-all_min(3,:);
+ypos3=all_mean(3,:)-all_max(3,:);
+errorbar(x1+0.1,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
+xlabel('Test number', 'FontSize', 16);
+ylabel('Error (m)', 'FontSize', 16);
+legend('2D+Direct H', '2D+Indirect H', 'FontSize', 16);
+%title('Mean-error plots', 'FontSize', 24);
+set(gca,'FontSize',16)
+xlim([0.5 8.5])
+ylim([0 0.8])
+height=500;
+width=900;
+set(gcf,'position',[0,0,width,height])
+grid on
+grid minor
+
+function s = Gr(theta)
+     s = 0.9931428571428571 + 0.0013357142857142856*theta - 0.00014107142857142858*(theta^2);
+end
 
 %Estimate distance assuming parallel Tx/Rx
 function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)

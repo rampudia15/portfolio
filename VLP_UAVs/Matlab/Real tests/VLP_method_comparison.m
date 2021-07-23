@@ -8,7 +8,7 @@ close all;
 rng('default');
 
 %Select test
-config=3;
+config=2;
 switch config
     case 1 %Vertical characterization
         m=6; %Lambertian order
@@ -16,10 +16,11 @@ switch config
         min_h=1; %For statistics and 2D+Indirect H, here min_h=1 helps 2D+Indirect H
         alpha=0.001; 
     case 2 %Semi-angle characterization
-        m=12;
+        m=14;
+        Pt=(27*.1)/2;
         k=1; 
-        min_h=0.25; %The drone has lift off
-        alpha=0.001; 
+        min_h=0; %The drone has lift off
+        alpha=0.005; 
     case 3 %Horizontal characterization
         m=12;
         k=0.47;
@@ -46,18 +47,18 @@ Rx = rx_center;
 %m=12; %Lambertian order
 %k=0.45; %Calibration factor to account for lateral error deviation
 Aeff=5.2; %[mm^2]
-Pt=2; %[Watts]
+%Pt=2; %[Watts]
 %A=[0.86; 1.06; 1.06; 1.29]; %Calibration of individual LEDs intensity
 A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity
 
 %Load data logged from crazyflie tests        
-load("data/logcurve_t1.mat") 
-%load("data/logcurve_t2.mat")
+%load("data/logcurve_t1.mat") 
+load("data/logcurve_t2.mat")
 %load("data/logcurve_t3.mat")
 %load("data/logcurve_t4.mat")
-%load("data/logcurve_t5.mat")
+%load("data/logcurve_t5.mat") %Good example to show!
 %load("data/logcurve_t6.mat")
-%load("data/logcurve_t7.mat")
+%load("data/logcurve_t7.mat") 
 %load("data/logcurve_t8.mat")
 
 %Save logged data to local variables
@@ -73,10 +74,10 @@ Rx_yaw = xyzrpy.yaw-90;
 
     %Power received
 Rx_time_pr = pr1234.time;
-Rx_Pr1 = pr1234.Pr1;
-Rx_Pr2 = pr1234.Pr2;
-Rx_Pr3 = pr1234.Pr3;
-Rx_Pr4 = pr1234.Pr4;
+Rx_Pr1 = pr1234.Pr1*pi/4;
+Rx_Pr2 = pr1234.Pr2*pi/4;
+Rx_Pr3 = pr1234.Pr3*pi/4;
+Rx_Pr4 = pr1234.Pr4*pi/4;
 
     %Accelerometer
 Rx_time_acc = axayaz.time;
@@ -133,6 +134,7 @@ LLS_est_3D = rx_center(1:3)';
 LLS_err = 0;
 LLS_all_err = [];
 best_LLS=[0;0;0.2];
+best_h=0;
 %min_h=0;
 
     %Counters for the position of the logged data 
@@ -161,7 +163,7 @@ all_h = []; %Real height
 all_h_bar = []; %Barometer estimate
 all_h_acc = []; %Accelerometer estimate
 all_h_fus = []; %Fused estimate with complementary filter
-
+all_h_pr = [];
     %Complementary filter variables
 az=0;
 vz=0;
@@ -183,7 +185,7 @@ h_bar0 = 0.2;
 old_h_bar0 = 0.2;
 
 %Complementary filter gain
-f=1; %Larger f means I trust the accelerometer more than the barometer
+f=2; %Larger f means I trust the accelerometer more than the barometer
 kc=[1.4/f,1/f];
 vel_drift = 0;
 pos_drift = 0;
@@ -290,7 +292,8 @@ for t=start_time:t_step:end_time %Time in seconds
             end
             
             for i=1:4
-                D_est2(i)= sqrt( (k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))); %Lambertian model
+                D_est2(i)= sqrt((k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))); %Lambertian model
+                %D_est2(i)= sqrt((Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))*Gr(inc_angle(i)));
             end 
             
             if(sum(isnan(D_est2))>0) %Check computation is real
@@ -298,7 +301,7 @@ for t=start_time:t_step:end_time %Time in seconds
                [MLE_est_2D] = MLE_method_2D(D_est2,X,Y);
             end
                 %Combine output of the complementary filter
-            MLE_est_2D_h = [MLE_est_2D(1); MLE_est_2D(2); h_fus]; 
+            MLE_est_2D_h = [MLE_est_2D(1); MLE_est_2D(2); h_fus];
             
             %b) 3D PSO method
             pso_func = @(PSO_est_3D)obj_func_pso(PSO_est_3D,Pr,X,Y,Z, Pt, Aeff, m, k)
@@ -307,7 +310,7 @@ for t=start_time:t_step:end_time %Time in seconds
             
             %c) Iterative 2D+H method
             best_res = 100;
-            for h=min_h:0.01:2
+            for h=0:0.01:2
                 %Obtain D(h)
                 D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr); 
                     
@@ -351,6 +354,7 @@ for t=start_time:t_step:end_time %Time in seconds
             all_h_bar = [all_h_bar h_bar];
             all_h_acc = [all_h_acc pos_drift];
             all_h_fus = [all_h_fus h_fus];
+            all_h_pr = [all_h_pr best_LLS(3)];
 
             %Save angle and state estimates 
             all_roll = [all_roll Rx_roll(state_ctr)];
@@ -365,15 +369,21 @@ for t=start_time:t_step:end_time %Time in seconds
 end
 
 %Plots
+green= [0.4660, 0.6740, 0.1880];
+blue= [0, 0.4470, 0.7410];
+red=[0.8500, 0.3250, 0.0980];
+grey=[0.25, 0.25, 0.25];
+yellow =[0.9290, 0.6940, 0.1250];
+purple=[0.4940, 0.1840, 0.5560];
 %Ground truth vs estimation - 3D plot
 figure(1)
     %Ground truth
-plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og')
+plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og'); %, 'Color', purple)%,'Color', green) %og
 hold on
     %Estimation
-plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), '*r')
-plot3(est_all_LLS(1,:), est_all_LLS(2,:), est_all_LLS(3,:), '*b')
-%plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), '*k')
+plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), 'o', 'Color', red) %ro
+plot3(est_all_LLS(1,:), est_all_LLS(2,:), est_all_LLS(3,:), 'o', 'Color', blue) %bo
+plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ko
     %Fixed transmitters
 plot3(Tx1(1),Tx1(2),Tx1(3), 'ko', 'MarkerFaceColor','k');
 plot3(Tx2(1),Tx2(2),Tx2(3), 'ko', 'MarkerFaceColor','k');
@@ -390,25 +400,39 @@ hold off
 xlabel('x','FontSize', 16);
 ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
-%legend('Ground truth', '2D+H (direct h estimation)', '3D LLS (indirect h estimation)', '3D PSO', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
-%,'Trajectory');
-legend('Ground truth', '2D+H', '3D LLS', 'TXs', 'FontSize', 20);
+%[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', 'TXs', 'FontSize', 16);
+[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
+icons = findobj(icons,'Type','line');
+% Find lines that use a marker
+icons = findobj(icons,'Marker','none','-xor');
+% Resize the marker in the legend
+set(icons,'LineWidth',2);
 %title('3D Drone trajectory - Ground truth vs estimations', 'FontSize', 20);
 set(gca,'FontSize',16)
 grid
+height=500;
+width=700;
+set(gcf,'position',[0,0,width,height])
+view(407,24)
+% hold on
+% %plot3(1.14, 0.8,1.31, 'o', 'Color', red, 'MarkerSize', 24, 'LineWidth', 3)
+% plot3(1.3207, 0.60923,1.246, 'ok', 'MarkerSize', 8, 'MarkerFaceColor','g', 'LineWidth', 2)
+% plot3(1.1455, 0.80809,1.3111,'ok', 'MarkerFaceColor',red, 'MarkerSize', 8, 'LineWidth', 2) 
+% plot3(1.2214, 0.746,1.64, 'ok', 'MarkerFaceColor',blue, 'MarkerSize', 8, 'LineWidth', 2) 
+
 
 %Ground truth vs estimation - 3D plot
 figure(2)
     %Ground truth
-plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og')
+plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og') %og
 hold on
     %Estimation
-plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), '*k')
+plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ok
     %Fixed transmitters
-plot3(Tx1(1),Tx1(2),Tx1(3), 'bo', 'MarkerFaceColor','b');
-plot3(Tx2(1),Tx2(2),Tx2(3), 'go', 'MarkerFaceColor','g');
-plot3(Tx3(1),Tx3(2),Tx3(3), 'ro', 'MarkerFaceColor','r');
-plot3(Tx4(1),Tx4(2),Tx4(3), 'ko','MarkerFaceColor','k');
+plot3(Tx1(1),Tx1(2),Tx1(3), 'ko', 'MarkerFaceColor','k'); %bo
+plot3(Tx2(1),Tx2(2),Tx2(3), 'ko', 'MarkerFaceColor','k'); %go
+plot3(Tx3(1),Tx3(2),Tx3(3), 'ko', 'MarkerFaceColor','k'); %ro
+plot3(Tx4(1),Tx4(2),Tx4(3), 'ko','MarkerFaceColor','k'); %ko
     %Trajectory
 %plot3([est_all_PSO(1,:) Rx_all(1,:)], [est_all_PSO(2,:) Rx_all(2,:)], [est_all_PSO(3,:) Rx_all(3,:)], 'k');
 hold off
@@ -417,18 +441,35 @@ ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
 %legend('Ground truth', '2D+H (direct h estimation)', '3D LLS (indirect h estimation)', '3D PSO', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
 %,'Trajectory');
-legend('Ground truth', '3D PSO', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
+[h,icons] =legend('Ground truth', '3D PSO', 'TXs','FontSize', 16);
+%legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
+icons = findobj(icons,'Type','line');
+% Find lines that use a marker
+icons = findobj(icons,'Marker','none','-xor');
+% Resize the marker in the legend
+set(icons,'LineWidth',2);
 %title('3D Drone trajectory - Ground truth vs estimations', 'FontSize', 20);
 set(gca,'FontSize',16)
 grid
+height=500;
+width=700;
+set(gcf,'position',[0,0,width,height])
+view(407,24)
 
 figure
-plot(all_h);
+plot(all_h,'LineWidth', 3);
 hold on
-plot(all_h_acc);
-plot(all_h_bar);
-plot(all_h_fus);
-legend('Ground truth', 'ACC', 'BAR', 'FUS');
+%plot(all_h_acc, 'LineWidth', 3);
+%plot(all_h_bar, 'LineWidth', 3);
+plot(all_h_pr, 'LineWidth', 3);
+plot(all_h_fus, 'LineWidth', 3);
+xlabel('Time step','FontSize', 16);
+ylabel('Height (m)','FontSize', 16);
+%legend('Ground truth', 'Accelerometer', 'Barometer', 'VLP', 'Complementary filter','FontSize', 16);
+legend('Ground truth', 'H VLP', 'H Sensor Fusion ','FontSize', 16);
+%title('Height estimation using sensor fusion', 'FontSize', 20);
+set(gca,'FontSize',16)
+grid
 
 %Compute statistics
 disp("VLP 2D+h estimate: ");
@@ -448,6 +489,10 @@ disp("Mean error: " + mean(LLS_all_err));
 disp("Median error: " + median(LLS_all_err));
 disp("Max error: " + max(LLS_all_err));
 disp("Std dev: " + std(LLS_all_err));
+
+function s = Gr(theta)
+     s = 0.9931428571428571 + 0.0013357142857142856*theta - 0.00014107142857142858*(theta^2);
+end
 
 %Estimate distance assuming parallel Tx/Rx
 function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
