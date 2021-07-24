@@ -7,27 +7,6 @@ clear all;
 close all;
 rng('default');
 
-%Select test
-config=2;
-switch config
-    case 1 %Vertical characterization
-        m=6; %Lambertian order
-        k=1; %Optical gain (Gr)
-        min_h=1; %For statistics and 2D+Indirect H, here min_h=1 helps 2D+Indirect H
-        alpha=0.001; 
-    case 2 %Semi-angle characterization
-        m=14; %datashet
-        k=1;  %no optical gain
-        Pt=2.7*0.5; %Pnom*Duty
-        min_h=0.25; %The drone has lift off
-        alpha=0.003;
-    case 3 %Horizontal characterization
-        m=12;
-        k=0.47;
-        min_h=0.25; %The drone has lift off
-        alpha=0.007; %Here VLP is better so we can trust it more
-end
-
 %Fixed coordinates of the Tx stations [x,y,z]
 Tx1=[0.25, 1, 0];
 Tx2=[1, 1.75, 0];
@@ -44,6 +23,11 @@ rx_center=[1,1,0.2];
 Rx = rx_center;
 
 %Light channel parameters
+m=14; %datasheet
+k=1;  %optical gain
+Pt=2.7*0.5; %Pnom*Duty (driving LEDs at 2.7W instead of 4.7W)
+
+
 %m=12; %Lambertian order
 %k=0.47; %Calibration factor to account for lateral error deviation
 Aeff=5.2; %[mm^2]
@@ -155,7 +139,7 @@ for test=1:8
     LLS_err = 0;
     LLS_all_err = [];
     best_LLS=[0;0;0.2];
-    %min_h=0; %Minimum height for method and statistics
+    min_h=0.25; %The drone has lift off
 
         %Counters for the position of the logged data 
     state_ctr = 2;
@@ -189,6 +173,7 @@ for test=1:8
     h_bar0 = 0.2;
     old_h_bar0 = 0.2;
     pz0=0.2;
+    alpha=0.003; %Drift correction
     
     %Complementary filter gains, kc for z
     f=1; %Larger f means I trust the accelerometer more than the barometer
@@ -346,7 +331,8 @@ for t=start_time:t_step:end_time %Time in seconds
                 PSO_all_err=[PSO_all_err PSO_err];
                 
                 %Save height estimates
-                h_err = abs(Rx(3) - h_fus);   
+                %h_err = abs(Rx(3) - h_fus); 
+                h_err = abs(Rx(3) - best_LLS(3)); 
                 all_h_err = [all_h_err h_err];
             end
 
@@ -554,9 +540,10 @@ function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
     sum=0;  
     C=k*Apd*(m+1)/(2*pi);
     for i=1:length(X)
-        sum = sum + ( C*(est(3)^(m+1))/sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2) - Pr(i)/Pt)^2;
-    end 
-    
+        d= sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2);
+        HLOS = C*(est(3)^(m+1))/(d^(m+3));
+        sum = sum + (HLOS - Pr(i)/Pt)^2;
+    end  
 end
 
 function [MLE_est, iter, tol] = LLS_method_3D(MLE_est,D,X,Y,Z,max_iter,tol)

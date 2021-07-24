@@ -7,27 +7,6 @@ clear all;
 close all;
 rng('default');
 
-%Select test
-config=2;
-switch config
-    case 1 %Vertical characterization
-        m=6; %Lambertian order
-        k=1; %Optical gain (Gr)
-        min_h=1; %For statistics and 2D+Indirect H, here min_h=1 helps 2D+Indirect H
-        alpha=0.001; 
-    case 2 %Semi-angle characterization
-        m=14;
-        Pt=(27*.1)/2;
-        k=1; 
-        min_h=0; %The drone has lift off
-        alpha=0.005; 
-    case 3 %Horizontal characterization
-        m=12;
-        k=0.47;
-        min_h=0.25; %The drone has lift off
-        alpha=0.007; %Here VLP is better so we can trust it more
-end
-
 %Fixed coordinates of the Tx stations [x,y,z]
 Tx1=[0.25, 1, 0];
 Tx2=[1, 1.75, 0];
@@ -44,19 +23,17 @@ rx_center=[1,1,0.2];
 Rx = rx_center;
 
 %Light channel parameters
-%m=12; %Lambertian order
-%k=0.45; %Calibration factor to account for lateral error deviation
+m=14;
+Pt=2.7*0.5; %Pnom*Duty (we drive the LEDs at 2.7W instead of 4.7W)
 Aeff=5.2; %[mm^2]
-%Pt=2; %[Watts]
-%A=[0.86; 1.06; 1.06; 1.29]; %Calibration of individual LEDs intensity
-A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity
+k=1;
 
 %Load data logged from crazyflie tests        
 %load("data/logcurve_t1.mat") 
-load("data/logcurve_t2.mat")
+%load("data/logcurve_t2.mat")
 %load("data/logcurve_t3.mat")
 %load("data/logcurve_t4.mat")
-%load("data/logcurve_t5.mat") %Good example to show!
+load("data/logcurve_t5.mat") %Good example to show!
 %load("data/logcurve_t6.mat")
 %load("data/logcurve_t7.mat") 
 %load("data/logcurve_t8.mat")
@@ -135,7 +112,7 @@ LLS_err = 0;
 LLS_all_err = [];
 best_LLS=[0;0;0.2];
 best_h=0;
-%min_h=0;
+min_h=0;
 
     %Counters for the position of the logged data 
 state_ctr = 2;
@@ -183,6 +160,7 @@ h_fus = 0.2;
 pz0=0.2;
 h_bar0 = 0.2;
 old_h_bar0 = 0.2;
+alpha=0.003;
 
 %Complementary filter gain
 f=2; %Larger f means I trust the accelerometer more than the barometer
@@ -273,7 +251,7 @@ for t=start_time:t_step:end_time %Time in seconds
             dt=(Rx_time_pr(pr_ctr)-Rx_time_pr(pr_ctr-1))/1000;
             
             %Obtain power received at time t       
-            Pr=[A(1)*Rx_Pr1(pr_ctr), A(2)*Rx_Pr2(pr_ctr), A(3)*Rx_Pr3(pr_ctr), A(4)*Rx_Pr4(pr_ctr)];
+            Pr=[Rx_Pr1(pr_ctr), Rx_Pr2(pr_ctr), Rx_Pr3(pr_ctr), Rx_Pr4(pr_ctr)];
 
             %Estimate distance between Txs and Rxs assuming that they are parallel
             D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr); 
@@ -375,6 +353,7 @@ red=[0.8500, 0.3250, 0.0980];
 grey=[0.25, 0.25, 0.25];
 yellow =[0.9290, 0.6940, 0.1250];
 purple=[0.4940, 0.1840, 0.5560];
+
 %Ground truth vs estimation - 3D plot
 figure(1)
     %Ground truth
@@ -383,7 +362,7 @@ hold on
     %Estimation
 plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), 'o', 'Color', red) %ro
 plot3(est_all_LLS(1,:), est_all_LLS(2,:), est_all_LLS(3,:), 'o', 'Color', blue) %bo
-plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ko
+%plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ko
     %Fixed transmitters
 plot3(Tx1(1),Tx1(2),Tx1(3), 'ko', 'MarkerFaceColor','k');
 plot3(Tx2(1),Tx2(2),Tx2(3), 'ko', 'MarkerFaceColor','k');
@@ -400,8 +379,8 @@ hold off
 xlabel('x','FontSize', 16);
 ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
-%[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', 'TXs', 'FontSize', 16);
-[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
+[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', 'TXs', 'FontSize', 16);
+%[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
 icons = findobj(icons,'Type','line');
 % Find lines that use a marker
 icons = findobj(icons,'Marker','none','-xor');
@@ -457,16 +436,16 @@ set(gcf,'position',[0,0,width,height])
 view(407,24)
 
 figure
-plot(all_h,'LineWidth', 3);
+plot(all_h,'LineWidth', 2, 'Color', green)
 hold on
 %plot(all_h_acc, 'LineWidth', 3);
 %plot(all_h_bar, 'LineWidth', 3);
-plot(all_h_pr, 'LineWidth', 3);
-plot(all_h_fus, 'LineWidth', 3);
+plot(all_h_fus, 'LineWidth', 2, 'Color', blue)
+plot(all_h_pr, 'LineWidth', 2,  'Color', red) 
 xlabel('Time step','FontSize', 16);
 ylabel('Height (m)','FontSize', 16);
 %legend('Ground truth', 'Accelerometer', 'Barometer', 'VLP', 'Complementary filter','FontSize', 16);
-legend('Ground truth', 'H VLP', 'H Sensor Fusion ','FontSize', 16);
+legend('Ground truth', '2D+Direct H', '2D+Indirect H','FontSize', 16);
 %title('Height estimation using sensor fusion', 'FontSize', 20);
 set(gca,'FontSize',16)
 grid
@@ -552,9 +531,10 @@ function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
     sum=0;  
     C=k*Apd*(m+1)/(2*pi);
     for i=1:length(X)
-        sum = sum + ( C*(est(3)^(m+1))/sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2) - Pr(i)/Pt)^2;
-    end 
-    
+        d= sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2);
+        HLOS = C*(est(3)^(m+1))/(d^(m+3));
+        sum = sum + (HLOS - Pr(i)/Pt)^2;
+    end  
 end
 
 function [MLE_est, iter, tol] = LLS_method_3D(MLE_est,D,X,Y,Z,max_iter,tol)
