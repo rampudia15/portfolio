@@ -33,10 +33,10 @@ k=1;
 %load("data/logcurve_t2.mat")
 %load("data/logcurve_t3.mat")
 %load("data/logcurve_t4.mat")
-load("data/logcurve_t5.mat") %Good example to show!
+load("data/logcurve_t5.mat") %For Firefly and Indirect 
 %load("data/logcurve_t6.mat")
 %load("data/logcurve_t7.mat") 
-%load("data/logcurve_t8.mat")
+%load("data/logcurve_t8.mat") %PSO
 
 %Save logged data to local variables
     %x,y,z,roll,pitch,yaw
@@ -100,6 +100,7 @@ MLE_err = 0;
 MLE_all_err = [];
 
     %PSO 3D method
+options = optimoptions('particleswarm','SwarmSize',40,'MaxIterations',20*3); %maxiter = 20*n_variables
 lb=[0;0;0];
 ub=[2;2;2];
 PSO_est_3D = rx_center(1:3);
@@ -217,8 +218,12 @@ for t=start_time:t_step:end_time %Time in seconds
             if (Rx_bar(bar_ctr) > 0)
                     h_bar0 = Rx_bar(bar_ctr);
                     %Long term drift correction
-                    %alpha= 0.005;
-                    h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_LLS(3);
+                        %Correct only if VLP can be trusted
+                    if (Rx_roll(state_ctr) < 3 && Rx_pitch(state_ctr) < 3)
+                        h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_LLS(3);
+                    else
+                        h_bar = (h_bar + (h_bar0-old_h_bar0));
+                    end
                     old_h_bar0 = h_bar0;
             end
             bar_ctr = bar_ctr + 1;
@@ -333,6 +338,7 @@ for t=start_time:t_step:end_time %Time in seconds
             all_h_acc = [all_h_acc pos_drift];
             all_h_fus = [all_h_fus h_fus];
             all_h_pr = [all_h_pr best_LLS(3)];
+            %all_h_pr = [all_h_pr PSO_est_3D(3)];
 
             %Save angle and state estimates 
             all_roll = [all_roll Rx_roll(state_ctr)];
@@ -360,7 +366,7 @@ figure(1)
 plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og'); %, 'Color', purple)%,'Color', green) %og
 hold on
     %Estimation
-plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), 'o', 'Color', red) %ro
+plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), 'o', 'Color', red, 'LineWidth', 1.2) %ro
 plot3(est_all_LLS(1,:), est_all_LLS(2,:), est_all_LLS(3,:), 'o', 'Color', blue) %bo
 %plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ko
     %Fixed transmitters
@@ -373,13 +379,13 @@ plot3(Tx4(1),Tx4(2),Tx4(3), 'ko','MarkerFaceColor','k');
 % end
     %Trajectory
 plot3([est_all_MLE(1,:) Rx_all(1,:)], [est_all_MLE(2,:) Rx_all(2,:)], [est_all_MLE(3,:) Rx_all(3,:)], 'r');
-plot3([est_all_LLS(1,:) Rx_all(1,:)], [est_all_LLS(2,:) Rx_all(2,:)], [est_all_LLS(3,:) Rx_all(3,:)], 'b');
+plot3([est_all_LLS(1,:) Rx_all(1,:)], [est_all_LLS(2,:) Rx_all(2,:)], [est_all_LLS(3,:) Rx_all(3,:)], 'Color' , green );
 %plot3([est_all_PSO(1,:) Rx_all(1,:)], [est_all_PSO(2,:) Rx_all(2,:)], [est_all_PSO(3,:) Rx_all(3,:)], 'k');
 hold off
 xlabel('x','FontSize', 16);
 ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
-[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', 'TXs', 'FontSize', 16);
+[h,icons] =legend('Ground truth', 'Firefly', 'Indirect H', 'TXs', 'FontSize', 16);
 %[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
 icons = findobj(icons,'Type','line');
 % Find lines that use a marker
@@ -399,13 +405,13 @@ view(407,24)
 % plot3(1.1455, 0.80809,1.3111,'ok', 'MarkerFaceColor',red, 'MarkerSize', 8, 'LineWidth', 2) 
 % plot3(1.2214, 0.746,1.64, 'ok', 'MarkerFaceColor',blue, 'MarkerSize', 8, 'LineWidth', 2) 
 
-
 %Ground truth vs estimation - 3D plot
 figure(2)
     %Ground truth
 plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og') %og
 hold on
     %Estimation
+plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), 'o', 'Color', red, 'LineWidth', 1.2) %ro
 plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ok
     %Fixed transmitters
 plot3(Tx1(1),Tx1(2),Tx1(3), 'ko', 'MarkerFaceColor','k'); %bo
@@ -413,6 +419,8 @@ plot3(Tx2(1),Tx2(2),Tx2(3), 'ko', 'MarkerFaceColor','k'); %go
 plot3(Tx3(1),Tx3(2),Tx3(3), 'ko', 'MarkerFaceColor','k'); %ro
 plot3(Tx4(1),Tx4(2),Tx4(3), 'ko','MarkerFaceColor','k'); %ko
     %Trajectory
+plot3([est_all_MLE(1,:) Rx_all(1,:)], [est_all_MLE(2,:) Rx_all(2,:)], [est_all_MLE(3,:) Rx_all(3,:)], 'Color', red);
+%plot3([est_all_LLS(1,:) Rx_all(1,:)], [est_all_LLS(2,:) Rx_all(2,:)], [est_all_LLS(3,:) Rx_all(3,:)], 'Color' , green );
 %plot3([est_all_PSO(1,:) Rx_all(1,:)], [est_all_PSO(2,:) Rx_all(2,:)], [est_all_PSO(3,:) Rx_all(3,:)], 'k');
 hold off
 xlabel('x','FontSize', 16);
@@ -420,7 +428,7 @@ ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
 %legend('Ground truth', '2D+H (direct h estimation)', '3D LLS (indirect h estimation)', '3D PSO', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
 %,'Trajectory');
-[h,icons] =legend('Ground truth', '3D PSO', 'TXs','FontSize', 16);
+[h,icons] =legend('Ground truth', 'Firefly', '3D PSO', 'TXs','FontSize', 16);
 %legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
 icons = findobj(icons,'Type','line');
 % Find lines that use a marker
@@ -435,19 +443,31 @@ width=700;
 set(gcf,'position',[0,0,width,height])
 view(407,24)
 
-figure
+figure(3)
 plot(all_h,'LineWidth', 2, 'Color', green)
 hold on
 %plot(all_h_acc, 'LineWidth', 3);
 %plot(all_h_bar, 'LineWidth', 3);
-plot(all_h_fus, 'LineWidth', 2, 'Color', blue)
-plot(all_h_pr, 'LineWidth', 2,  'Color', red) 
+plot(all_h_fus, 'LineWidth', 2, 'Color', red)
+plot(all_h_pr, 'LineWidth', 2,  'Color', blue) 
 xlabel('Time step','FontSize', 16);
 ylabel('Height (m)','FontSize', 16);
 %legend('Ground truth', 'Accelerometer', 'Barometer', 'VLP', 'Complementary filter','FontSize', 16);
-legend('Ground truth', '2D+Direct H', '2D+Indirect H','FontSize', 16);
+legend('Ground truth', 'Firefly', 'Indirect H','FontSize', 16);
 %title('Height estimation using sensor fusion', 'FontSize', 20);
 set(gca,'FontSize',16)
+grid
+
+figure(4)
+plot(abs(all_roll),'LineWidth', 2, 'Color', yellow)
+hold on
+plot(abs(all_pitch),'LineWidth', 2, 'Color', purple)
+xlabel('Time step','FontSize', 16);
+ylabel('| Angle [°]) |','FontSize', 16);
+legend('Roll', 'Pitch','FontSize', 16);
+%title('Height estimation using sensor fusion', 'FontSize', 20);
+set(gca,'FontSize',16)
+ylim([0 7])
 grid
 
 %Compute statistics

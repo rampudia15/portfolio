@@ -128,6 +128,7 @@ for test=1:8
     MLE_all_err = [];
 
         %PSO 3D method
+    options = optimoptions('particleswarm','SwarmSize',40,'MaxIterations',20*3); %maxiter = 20*n_variables
     lb=[0;0;0];
     ub=[2;2;2];
     PSO_est_3D = rx_center(1:3);
@@ -174,6 +175,7 @@ for test=1:8
     old_h_bar0 = 0.2;
     pz0=0.2;
     alpha=0.003; %Drift correction
+     periodic = 0;
     
     %Complementary filter gains, kc for z
     f=1; %Larger f means I trust the accelerometer more than the barometer
@@ -230,8 +232,14 @@ for t=start_time:t_step:end_time %Time in seconds
             if (Rx_bar(bar_ctr) > 0)
                     h_bar0 = Rx_bar(bar_ctr);
                     %Long term drift correction
-                    %alpha= 0.005;
-                    h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_LLS(3);
+                        %Correct only if VLP can be trusted
+                    if (Rx_roll(state_ctr) < 3 && Rx_pitch(state_ctr) < 3)% && periodic == 10)
+                        h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_LLS(3);
+                        periodic = 0;
+                    else
+                        h_bar = (h_bar + (h_bar0-old_h_bar0));
+                        periodic = periodic +1;
+                    end
                     old_h_bar0 = h_bar0;
             end
             bar_ctr = bar_ctr + 1;
@@ -293,7 +301,7 @@ for t=start_time:t_step:end_time %Time in seconds
             
             %b) 3D PSO method
             pso_func = @(PSO_est_3D)obj_func_pso(PSO_est_3D,Pr,X,Y,Z, Pt, Aeff, m, k)
-            [PSO_est_3D,fval,exitflag,output] = particleswarm(pso_func, 3, lb, ub);
+            [PSO_est_3D,fval,exitflag,output] = particleswarm(pso_func, 3, lb, ub, options);
             PSO_est_3D = PSO_est_3D';
             
             %c) Iterative 2D+H method
@@ -313,9 +321,30 @@ for t=start_time:t_step:end_time %Time in seconds
                 if res < best_res
                     best_LLS = LLS_est_3D;
                     best_res = res;
+                    best_D = D_est;
+                    best_h=h;
                 end
             end
- 
+            %%%%%%%%%%%%%%%%%%%%%
+            %Uncomment to introduce tilt information to the 2D+Indirect H
+%              for i=1:4
+%                 inc_angle(i) = acosd((xr-X(i))*cosd(Rx_roll(state_ctr))*sind(Rx_pitch(state_ctr)) + ...
+%                 (yr-Y(i))*sind(Rx_roll(state_ctr))*sind(Rx_pitch(state_ctr)) + (best_h - Z(i))*cosd(Rx_pitch(state_ctr))/best_D(i));
+%              end
+%             
+%             for i=1:4
+%                 D_est2(i)= sqrt( (k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((best_h/best_D(i)))^m)*cosd(inc_angle(i)));
+%                 %D_est2(i)= sqrt( (Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))*Gr(inc_angle(i))); %Lambertian model
+%             end 
+%             
+%             if(sum(isnan(D_est2))>0) %Check computation is real
+%             else
+%                LLS_est_2D = LLS_method_2D(D_est2,X,Y);
+%                LLS_est_3D = abs([LLS_est_2D(1); LLS_est_2D(2); best_h]);
+%                best_LLS = LLS_est_3D;
+%             end
+            %%%%%%%%%%%%%%%%%%%%%
+            
             %Increase Pr counter
             pr_ctr = pr_ctr + 1;
 
@@ -389,7 +418,7 @@ plot(all_mean(2,:), '-s')
 plot(all_mean(3,:), '-s')
 xlabel('Test number')
 ylabel('Mean error')
-legend('Direct h + 2D MLE', '3D PSO', 'Indirect h + 2D LLS')
+legend('Firefly', '3D PSO', 'Indirect h')
 title('Mean error of different methods');
 
 figure(2)
@@ -399,7 +428,7 @@ plot(all_median(2,:), '-s')
 plot(all_median(3,:), '-s')
 xlabel('Test number')
 ylabel('Median error')
-legend('Direct h + 2D MLE', '3D PSO', 'Indirect h + 2D LLS')
+legend('Firefly', '3D PSO', 'Indirect h')
 title('Median error of different methods');
 
 figure(3)
@@ -409,7 +438,7 @@ plot(all_max(2,:), '-s')
 plot(all_max(3,:), '-s')
 xlabel('Test number')
 ylabel('Maximum error')
-legend('Direct h + 2D MLE', '3D PSO', 'Indirect h + 2D LLS')
+legend('Firefly', '3D PSO', 'Indirect h')
 title('Maximum error of different methods');
 
 figure(4)
@@ -419,7 +448,7 @@ plot(all_std(2,:), '-s')
 plot(all_std(3,:), '-s')
 xlabel('Test number')
 ylabel('Standard deviation of the error')
-legend('Direct h + 2D MLE', '3D PSO', 'Indirect h + 2D LLS')
+legend('Firefly', '3D PSO', 'Indirect h')
 title('Standard deviation of error of different methods');
 
 green= [0.4660, 0.6740, 0.1880];
@@ -434,21 +463,21 @@ yneg1=all_mean(1,:)-all_min(1,:);
 ypos1=all_mean(1,:)-all_max(1,:);
 errorbar(x1-0.2,y1,yneg1,ypos1,'s', 'Color', red, 'LineWidth', 3, 'MarkerSize',12)
 hold on
-y2 = all_mean(2,:);
-yneg2=all_mean(2,:)-all_min(2,:);
-ypos2=all_mean(2,:)-all_max(2,:);
-errorbar(x1,y2,yneg2,ypos2,'s', 'Color', grey, 'LineWidth', 3, 'MarkerSize',12)
 y3 = all_mean(3,:);
 yneg3=all_mean(3,:)-all_min(3,:);
 ypos3=all_mean(3,:)-all_max(3,:);
-errorbar(x1+0.2,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
+errorbar(x1,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
+y2 = all_mean(2,:);
+yneg2=all_mean(2,:)-all_min(2,:);
+ypos2=all_mean(2,:)-all_max(2,:);
+errorbar(x1+0.2,y2,yneg2,ypos2,'s', 'Color', grey, 'LineWidth', 3, 'MarkerSize',12)
 xlabel('Test number', 'FontSize', 16);
 ylabel('Error (m)', 'FontSize', 16);
-legend('2D+Direct H', '3D PSO', '2D+Indirect H', 'FontSize', 16);
+legend('Firefly', 'Indirect H', '3D PSO', 'FontSize', 16);
 %title('Mean-error plots', 'FontSize', 24);
 set(gca,'FontSize',16)
 xlim([0.5 8.5])
-ylim([0 2])
+ylim([0 2.3])
 height=500;
 width=900;
 set(gcf,'position',[0,0,width,height])
