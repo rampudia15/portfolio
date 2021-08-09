@@ -94,7 +94,7 @@ for test=1:8
     Rx_time_bar = asl.time;
     Rx_bar = asl.asl - asl.asl(1); %Set starting position at 0m
 
-    %Apply filtering to raw siLLSals
+    %Apply filtering to raw signal
         %LP filter of accelerometer
     Rx_ax = lowpass(Rx_ax, 0.1, 50);
     Rx_ay = lowpass(Rx_ay, 0.1, 50);
@@ -272,11 +272,16 @@ for t=start_time:t_step:end_time %Time in seconds
             Pr=[A(1)*Rx_Pr1(pr_ctr), A(2)*Rx_Pr2(pr_ctr), A(3)*Rx_Pr3(pr_ctr), A(4)*Rx_Pr4(pr_ctr)];
 
             %Estimate distance between Txs and Rxs assuming that they are parallel
-            D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr); 
+            D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr);
+            
+            %Horizontal distance for 2D
+            for i=1:4
+                r(i) = sqrt(D_est(i)^2 - h_fus^2);
+            end
 
             %Calculate position with different methods           
             %a) 2D + h MLE method
-            [MLE_est_2D] = MLE_method_2D(D_est,X,Y);
+            [MLE_est_2D] = MLE_method_2D(r,X,Y);
             
                 %Recalculate the distance considering tilt information
             xr=MLE_est_2D(1);
@@ -292,9 +297,13 @@ for t=start_time:t_step:end_time %Time in seconds
                 %D_est2(i)= sqrt( (Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))*Gr(inc_angle(i))); %Lambertian model
             end 
             
+            %Horizontal distance for 2D
+            for i=1:4
+                r(i) = sqrt(D_est2(i)^2 - h_fus^2);
+            end        
             if(sum(isnan(D_est2))>0) %Check computation is real
             else
-               [MLE_est_2D] = MLE_method_2D(D_est2,X,Y);
+               [MLE_est_2D] = MLE_method_2D(r,X,Y);
             end
                 %Combine output of the complementary filter
             MLE_est_2D_h = [MLE_est_2D(1); MLE_est_2D(2); h_fus]; 
@@ -456,24 +465,28 @@ blue= [0, 0.4470, 0.7410];
 red=[0.8500, 0.3250, 0.0980];
 grey=[0.25, 0.25, 0.25];
 
+hold off
 figure(5)
 x1 = 1:8;
 y1 = all_mean(1,:);
 yneg1=all_mean(1,:)-all_min(1,:);
 ypos1=all_mean(1,:)-all_max(1,:);
-errorbar(x1-0.2,y1,yneg1,ypos1,'s', 'Color', red, 'LineWidth', 3, 'MarkerSize',12)
+errorbar(x1-0.2,y1,yneg1,ypos1,'o', 'Color', red, 'LineWidth', 2.5, 'MarkerSize',10)
 hold on
 y3 = all_mean(3,:);
 yneg3=all_mean(3,:)-all_min(3,:);
 ypos3=all_mean(3,:)-all_max(3,:);
-errorbar(x1,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
+errorbar(x1,y3,yneg3,ypos3,'*', 'Color', blue, 'LineWidth', 2.5, 'MarkerSize',12)
 y2 = all_mean(2,:);
 yneg2=all_mean(2,:)-all_min(2,:);
 ypos2=all_mean(2,:)-all_max(2,:);
-errorbar(x1+0.2,y2,yneg2,ypos2,'s', 'Color', grey, 'LineWidth', 3, 'MarkerSize',12)
+errorbar(x1+0.2,y2,yneg2,ypos2,'x', 'Color', grey, 'LineWidth', 2.5, 'MarkerSize',12)
 xlabel('Test number', 'FontSize', 16);
-ylabel('Error (m)', 'FontSize', 16);
-legend('Firefly', 'Indirect H', '3D PSO', 'FontSize', 16);
+ylabel('Location error (m)', 'FontSize', 16);
+u(1)=plot(NaN,NaN,'o', 'Color', red, 'MarkerSize', 10, 'LineWidth', 1.8);
+u(2)=plot(NaN,NaN,'*', 'Color', blue, 'MarkerSize', 12, 'LineWidth', 1.4);
+u(3)=plot(NaN,NaN,'x', 'Color', grey, 'MarkerSize', 12, 'MarkerFace', grey, 'LineWidth', 1.8);
+legend(u, 'Firefly', 'Indirect-H [19] ', '3D PSO [28]', 'FontSize', 16)
 %title('Mean-error plots', 'FontSize', 24);
 set(gca,'FontSize',16)
 xlim([0.5 8.5])
@@ -484,33 +497,29 @@ set(gcf,'position',[0,0,width,height])
 grid on
 grid minor
 
-figure(6)
-x1 = 1:8;
-y1 = all_mean(1,:);
-yneg1=all_mean(1,:)-all_min(1,:);
-ypos1=all_mean(1,:)-all_max(1,:);
-errorbar(x1-0.1,y1,yneg1,ypos1,'s', 'Color', red, 'LineWidth', 3, 'MarkerSize',12)
-hold on
-y3 = all_mean(3,:);
-yneg3=all_mean(3,:)-all_min(3,:);
-ypos3=all_mean(3,:)-all_max(3,:);
-errorbar(x1+0.1,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
-xlabel('Test number', 'FontSize', 16);
-ylabel('Error (m)', 'FontSize', 16);
-legend('2D+Direct H', '2D+Indirect H', 'FontSize', 16);
-%title('Mean-error plots', 'FontSize', 24);
-set(gca,'FontSize',16)
-xlim([0.5 8.5])
-ylim([0 0.8])
-height=500;
-width=900;
-set(gcf,'position',[0,0,width,height])
-grid on
-grid minor
-
-function s = Gr(theta)
-     s = 0.9931428571428571 + 0.0013357142857142856*theta - 0.00014107142857142858*(theta^2);
-end
+% figure(6)
+% x1 = 1:8;
+% y1 = all_mean(1,:);
+% yneg1=all_mean(1,:)-all_min(1,:);
+% ypos1=all_mean(1,:)-all_max(1,:);
+% errorbar(x1-0.1,y1,yneg1,ypos1,'s', 'Color', red, 'LineWidth', 3, 'MarkerSize',12)
+% hold on
+% y3 = all_mean(3,:);
+% yneg3=all_mean(3,:)-all_min(3,:);
+% ypos3=all_mean(3,:)-all_max(3,:);
+% errorbar(x1+0.1,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
+% xlabel('Test number', 'FontSize', 16);
+% ylabel('Error (m)', 'FontSize', 16);
+% legend('2D+Direct H', '2D+Indirect H', 'FontSize', 16);
+% %title('Mean-error plots', 'FontSize', 24);
+% set(gca,'FontSize',16)
+% xlim([0.5 8.5])
+% ylim([0 0.8])
+% height=500;
+% width=900;
+% set(gcf,'position',[0,0,width,height])
+% grid on
+% grid minor
 
 %Estimate distance assuming parallel Tx/Rx
 function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
@@ -519,6 +528,7 @@ function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
     for i=1:4
         D_est(i) = (k*(m+1)*Aeff*Pt*(h_est^(m+1))/(2*pi*Pr(i)))^(1/(m+3));         
     end 
+    
 end
 
 %Calculate x and y position using Maximum Likelihood Estimation method
@@ -533,13 +543,13 @@ function [MLE_est] = MLE_method_2D(D,X,Y)
     MLE_est=inv(A'*A)*A'*b;
 end
 
-%Calculate x and y position using Maximum Likelihood Estimation method
+%Calculate x and y position using Linear Least Square method
 function [LLS_est] = LLS_method_2D(D,X,Y)
     n=length(X); 
     for i=1:n-1
-        A(i,1) = (X(i)-X(n));
-        A(i,2) = (Y(i)-Y(n));
-        b(i,1) = 0.5*(D(i)^2 - X(i)^2 - Y(i)^2 - D(n)^2 + X(n)^2 + Y(n)^2);
+        A(i,1) = -2*(X(i)-X(n));
+        A(i,2) = -2*(Y(i)-Y(n));
+        b(i,1) = (D(i)^2 - X(i)^2 - Y(i)^2 - D(n)^2 + X(n)^2 + Y(n)^2);
     end
     LLS_est=inv(A'*A)*A'*b;
 end
@@ -573,41 +583,4 @@ function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
         HLOS = C*(est(3)^(m+1))/(d^(m+3));
         sum = sum + (HLOS - Pr(i)/Pt)^2;
     end  
-end
-
-function [MLE_est, iter, tol] = LLS_method_3D(MLE_est,D,X,Y,Z,max_iter,tol)
-    res=obj_func_3D(MLE_est,D,X,Y,Z);
-    iter=0;
-    alpha=1;
-    while iter<max_iter && tol<res
-        J=jacobian_3D(MLE_est,X,Y,Z);
-        R=residuals_3D(MLE_est,D,X,Y,Z)';
-        MLE_est=MLE_est-((J'*J)\(J'))*R*alpha;
-        res=obj_func_3D(MLE_est,D,X,Y,Z);
-        iter=iter+1;
-    end
-end
-
-function sum=obj_func_3D(est,D,X,Y,Z)
-    sum=0;  
-    for i=1:length(X)
-        sum = sum + (D(i) - sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2))^2;
-    end 
-    sum=1/length(X);
-end
-
-function R=residuals_3D(est,D,X,Y,Z)
-    R=[];  
-    for i=1:length(X)
-        R(i) = D(i) - sqrt((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2);
-    end 
-end
-
-function J=jacobian_3D(est,X,Y,Z)
-    J=[];
-    for i=1:length(X)
-        J(i,1)= 0.5*(2*X(i) - 2*est(1))*((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2)^(-0.5);
-        J(i,2)= 0.5*(2*Y(i) - 2*est(2))*((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2)^(-0.5);
-        J(i,3)= 0.5*(2*Z(i) - 2*est(3))*((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2)^(-0.5);
-    end
 end

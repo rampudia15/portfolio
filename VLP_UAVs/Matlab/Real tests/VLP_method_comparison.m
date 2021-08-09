@@ -260,10 +260,15 @@ for t=start_time:t_step:end_time %Time in seconds
 
             %Estimate distance between Txs and Rxs assuming that they are parallel
             D_est = distance_est_parallel(m, k, Aeff, h_fus, Pt, Pr); 
-
+            
+            %Horizontal distance for 2D
+            for i=1:4
+                r(i) = sqrt(D_est(i)^2 - h_fus^2);
+            end
+        
             %Calculate position with different methods           
             %a) 2D + h MLE method
-            [MLE_est_2D] = MLE_method_2D(D_est,X,Y);
+            [MLE_est_2D] = MLE_method_2D(r,X,Y);
             
                 %Recalculate the distance considering tilt information
             xr=MLE_est_2D(1);
@@ -277,11 +282,15 @@ for t=start_time:t_step:end_time %Time in seconds
             for i=1:4
                 D_est2(i)= sqrt((k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))); %Lambertian model
                 %D_est2(i)= sqrt((Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))*Gr(inc_angle(i)));
-            end 
+            end   
             
+            %Horizontal distance for 2D
+            for i=1:4
+                r(i) = sqrt(D_est2(i)^2 - h_fus^2);
+            end   
             if(sum(isnan(D_est2))>0) %Check computation is real
             else
-               [MLE_est_2D] = MLE_method_2D(D_est2,X,Y);
+               [MLE_est_2D] = MLE_method_2D(r,X,Y);
             end
                 %Combine output of the complementary filter
             MLE_est_2D_h = [MLE_est_2D(1); MLE_est_2D(2); h_fus];
@@ -361,13 +370,16 @@ yellow =[0.9290, 0.6940, 0.1250];
 purple=[0.4940, 0.1840, 0.5560];
 
 %Ground truth vs estimation - 3D plot
+hold off
 figure(1)
     %Ground truth
-plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og'); %, 'Color', purple)%,'Color', green) %og
+plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'sg', 'LineWidth', 1.2); %, 'Color', purple)%,'Color', green) %og
 hold on
     %Estimation
+%plot3(est_all_MLE(1,1:2:end), est_all_MLE(2,1:2:end), est_all_MLE(3,1:2:end), 'o', 'Color', red, 'LineWidth', 1.2) %ro
 plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), 'o', 'Color', red, 'LineWidth', 1.2) %ro
-plot3(est_all_LLS(1,:), est_all_LLS(2,:), est_all_LLS(3,:), 'o', 'Color', blue) %bo
+%plot3(est_all_LLS(1,:), est_all_LLS(2,:), est_all_LLS(3,:), '*', 'Color', blue, 'LineWidth', 1) %bo
+plot3(est_all_LLS(1,1:3:end), est_all_LLS(2,1:3:end), est_all_LLS(3,1:3:end), '*', 'Color', blue, 'LineWidth', 1) %bo
 %plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ko
     %Fixed transmitters
 plot3(Tx1(1),Tx1(2),Tx1(3), 'ko', 'MarkerFaceColor','k');
@@ -385,13 +397,14 @@ hold off
 xlabel('x','FontSize', 16);
 ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
-[h,icons] =legend('Ground truth', 'Firefly', 'Indirect H', 'TXs', 'FontSize', 16);
+[h,icons] =legend('Ground truth', 'Firefly', 'Indirect-H [19]', 'TXs', 'FontSize', 16);
 %[h,icons] =legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
 icons = findobj(icons,'Type','line');
 % Find lines that use a marker
 icons = findobj(icons,'Marker','none','-xor');
 % Resize the marker in the legend
-set(icons,'LineWidth',2);
+set(icons(1:2),'LineWidth',2);
+set(icons(4),'LineWidth',2);
 %title('3D Drone trajectory - Ground truth vs estimations', 'FontSize', 20);
 set(gca,'FontSize',16)
 grid
@@ -403,16 +416,17 @@ view(407,24)
 % %plot3(1.14, 0.8,1.31, 'o', 'Color', red, 'MarkerSize', 24, 'LineWidth', 3)
 % plot3(1.3207, 0.60923,1.246, 'ok', 'MarkerSize', 8, 'MarkerFaceColor','g', 'LineWidth', 2)
 % plot3(1.1455, 0.80809,1.3111,'ok', 'MarkerFaceColor',red, 'MarkerSize', 8, 'LineWidth', 2) 
-% plot3(1.2214, 0.746,1.64, 'ok', 'MarkerFaceColor',blue, 'MarkerSize', 8, 'LineWidth', 2) 
+% plot3(1.2214, 0.746,1.64, 'ok', 'MarkerFaceColor',blue, 'MarkerSize', 8,
+% 'LineWidth', 2) 
 
 %Ground truth vs estimation - 3D plot
 figure(2)
     %Ground truth
-plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'og') %og
+plot3(Rx_all(1,:), Rx_all(2,:), Rx_all(3,:), 'sg', 'LineWidth', 1.2) %og
 hold on
     %Estimation
 plot3(est_all_MLE(1,:), est_all_MLE(2,:), est_all_MLE(3,:), 'o', 'Color', red, 'LineWidth', 1.2) %ro
-plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'o', 'Color', grey) %ok
+plot3(est_all_PSO(1,:), est_all_PSO(2,:), est_all_PSO(3,:), 'x', 'Color', grey, 'LineWidth', 1) %ok
     %Fixed transmitters
 plot3(Tx1(1),Tx1(2),Tx1(3), 'ko', 'MarkerFaceColor','k'); %bo
 plot3(Tx2(1),Tx2(2),Tx2(3), 'ko', 'MarkerFaceColor','k'); %go
@@ -428,7 +442,7 @@ ylabel('y','FontSize', 16);
 zlabel('z','FontSize', 16);
 %legend('Ground truth', '2D+H (direct h estimation)', '3D LLS (indirect h estimation)', '3D PSO', 'Tx1', 'Tx2', 'Tx3', 'Tx4','FontSize', 20);
 %,'Trajectory');
-[h,icons] =legend('Ground truth', 'Firefly', '3D PSO', 'TXs','FontSize', 16);
+[h,icons] =legend('Ground truth', 'Firefly', '3D PSO [28]', 'TXs','FontSize', 16); 
 %legend('Ground truth', '2D+ Direct H', '2D+Indirect H', '3D PSO', 'TXs', 'FontSize', 20);
 icons = findobj(icons,'Type','line');
 % Find lines that use a marker
@@ -444,31 +458,46 @@ set(gcf,'position',[0,0,width,height])
 view(407,24)
 
 figure(3)
-plot(all_h,'LineWidth', 2, 'Color', green)
+hold off
+%subplot(4,1,[1 3])
+subplot(16,1,[1 10])
+%plot(1:203, all_h, '-', 'LineWidth', 2, 'Color', green)
+plot(1:5:223, all_h(1:5:end), '-sg', 'LineWidth', 1.3, 'MarkerSize', 6)%, 'Color', green) 1.2
 hold on
 %plot(all_h_acc, 'LineWidth', 3);
 %plot(all_h_bar, 'LineWidth', 3);
-plot(all_h_fus, 'LineWidth', 2, 'Color', red)
-plot(all_h_pr, 'LineWidth', 2,  'Color', blue) 
-xlabel('Time step','FontSize', 16);
+plot(1:5:223, all_h_fus(1:5:end), '-o', 'LineWidth', 1.2, 'MarkerSize', 6, 'Color', red) %'LineWidth', 2,
+%plot(1:203, all_h_fus, ':p', 'LineWidth', 2.5, 'Color', red) %'LineWidth', 2,
+plot(1:5:223, all_h_pr(1:5:end), '-*', 'LineWidth', 0.2, 'MarkerSize', 7, 'Color', blue)
+%plot(1:203, all_h_pr, '--','LineWidth', 2, 'Color', blue) 
+xlabel('','FontSize', 16);
 ylabel('Height (m)','FontSize', 16);
 %legend('Ground truth', 'Accelerometer', 'Barometer', 'VLP', 'Complementary filter','FontSize', 16);
-legend('Ground truth', 'Firefly', 'Indirect H','FontSize', 16);
+legend('Ground truth', 'Firefly', 'Indirect-H [19]','FontSize', 16);
 %title('Height estimation using sensor fusion', 'FontSize', 20);
 set(gca,'FontSize',16)
+xticklabels('');
 grid
 
-figure(4)
-plot(abs(all_roll),'LineWidth', 2, 'Color', yellow)
+%plot(1:203, all_h_fus, ':o', 'LineWidth', 1, 'MarkerSize', 4, 'Color', red) %'LineWidth', 2,
+
+%figure(4)
+%subplot(4,1,4)
+subplot(16,1,[11 15])
+plot(1:223, abs(all_pitch), '-', 'LineWidth', 2, 'Color', yellow)
 hold on
-plot(abs(all_pitch),'LineWidth', 2, 'Color', purple)
+plot(1:223, abs(all_roll), ':', 'LineWidth', 2, 'Color', purple)
+%plot(1:203, abs(all_pitch), '-', 'LineWidth', 2.5, 'Color', yellow)
 xlabel('Time step','FontSize', 16);
-ylabel('| Angle [°]) |','FontSize', 16);
-legend('Roll', 'Pitch','FontSize', 16);
+ylabel('| Angle [°] |','FontSize', 16);
+legend('Pitch', 'Roll','FontSize', 16);
 %title('Height estimation using sensor fusion', 'FontSize', 20);
 set(gca,'FontSize',16)
 ylim([0 7])
 grid
+ytickformat('%,.1f')
+hold off
+
 
 %Compute statistics
 disp("VLP 2D+h estimate: ");
@@ -489,9 +518,6 @@ disp("Median error: " + median(LLS_all_err));
 disp("Max error: " + max(LLS_all_err));
 disp("Std dev: " + std(LLS_all_err));
 
-function s = Gr(theta)
-     s = 0.9931428571428571 + 0.0013357142857142856*theta - 0.00014107142857142858*(theta^2);
-end
 
 %Estimate distance assuming parallel Tx/Rx
 function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
@@ -500,6 +526,7 @@ function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
     for i=1:4
         D_est(i) = (k*(m+1)*Aeff*Pt*(h_est^(m+1))/(2*pi*Pr(i)))^(1/(m+3));         
     end 
+    
 end
 
 %Calculate x and y position using Maximum Likelihood Estimation method
@@ -514,13 +541,13 @@ function [MLE_est] = MLE_method_2D(D,X,Y)
     MLE_est=inv(A'*A)*A'*b;
 end
 
-%Calculate x and y position using Maximum Likelihood Estimation method
+%Calculate x and y position using Linear Least Square method
 function [LLS_est] = LLS_method_2D(D,X,Y)
     n=length(X); 
     for i=1:n-1
-        A(i,1) = (X(i)-X(n));
-        A(i,2) = (Y(i)-Y(n));
-        b(i,1) = 0.5*(D(i)^2 - X(i)^2 - Y(i)^2 - D(n)^2 + X(n)^2 + Y(n)^2);
+        A(i,1) = -2*(X(i)-X(n));
+        A(i,2) = -2*(Y(i)-Y(n));
+        b(i,1) = (D(i)^2 - X(i)^2 - Y(i)^2 - D(n)^2 + X(n)^2 + Y(n)^2);
     end
     LLS_est=inv(A'*A)*A'*b;
 end
@@ -530,10 +557,9 @@ function R = rotation(angles)
     p = deg2rad(angles(2)); %pitch in radians
     y = deg2rad(angles(3)); %yaw in radians
     
-    %ENU convention, CW: Roll, yaw - CCW: Pitch
     roll=inv([1 0 0    ; 0 cos(r) -sin(r); 0 sin(r) cos(r)]);
     pitch=([cos(p) 0 sin(p); 0 1 0; -sin(p) 0 cos(p)]);
-    yaw=inv([cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1])';
+    yaw=inv([cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1]);
     
    R=yaw*pitch*roll;
 end
@@ -555,41 +581,4 @@ function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
         HLOS = C*(est(3)^(m+1))/(d^(m+3));
         sum = sum + (HLOS - Pr(i)/Pt)^2;
     end  
-end
-
-function [MLE_est, iter, tol] = LLS_method_3D(MLE_est,D,X,Y,Z,max_iter,tol)
-    res=obj_func_3D(MLE_est,D,X,Y,Z);
-    iter=0;
-    alpha=1;
-    while iter<max_iter && tol<res
-        J=jacobian_3D(MLE_est,X,Y,Z);
-        R=residuals_3D(MLE_est,D,X,Y,Z)';
-        MLE_est=MLE_est-((J'*J)\(J'))*R*alpha;
-        res=obj_func_3D(MLE_est,D,X,Y,Z);
-        iter=iter+1;
-    end
-end
-
-function sum=obj_func_3D(est,D,X,Y,Z)
-    sum=0;  
-    for i=1:length(X)
-        sum = sum + (D(i) - sqrt( (X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2))^2;
-    end 
-    sum=1/length(X);
-end
-
-function R=residuals_3D(est,D,X,Y,Z)
-    R=[];  
-    for i=1:length(X)
-        R(i) = D(i) - sqrt((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2);
-    end 
-end
-
-function J=jacobian_3D(est,X,Y,Z)
-    J=[];
-    for i=1:length(X)
-        J(i,1)= 0.5*(2*X(i) - 2*est(1))*((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2)^(-0.5);
-        J(i,2)= 0.5*(2*Y(i) - 2*est(2))*((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2)^(-0.5);
-        J(i,3)= 0.5*(2*Z(i) - 2*est(3))*((X(i)-est(1))^2 + (Y(i)-est(2))^2 + (Z(i)-est(3))^2)^(-0.5);
-    end
 end
