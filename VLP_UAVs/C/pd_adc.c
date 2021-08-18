@@ -118,8 +118,10 @@ float X[N_LEDS] = {Tx1[0], Tx2[0], Tx3[0], Tx4[0]};
 float Y[N_LEDS] = {Tx1[1], Tx2[1], Tx3[1], Tx4[1]};
 float Z[N_LEDS] = {Tx1[2], Tx2[2], Tx3[2], Tx4[2]};
 
+//Start ADC
 adcInit();
 
+//Begin loop
 while (true) {
 
     //Acquire ADC samples
@@ -134,8 +136,10 @@ while (true) {
     //Perform FFT on the input signal to obtain Pr (uW) from the LEDs
     fft_routine_cmsis(P_signal, SAMPLES, Pr_tmp, N_LEDS);
 
-    /* The positioning method was executed off-line in Matlab, but some of the
-    positioning algorithm are available for an on-line implementation using CMSIS DSP lib */
+    /* The positioning method is executed offline in Matlab, but some of the
+    functions necessary for an online implementation are already available 
+    using the CMSIS DSP lib for real-time execution: */
+    
     //Aquire height from complementary filter (not programmed)
     //h = 1.75; 
 
@@ -146,10 +150,12 @@ while (true) {
     //calc_position_MLE(X, Y, h, D, pos, N_LEDS);
     //DEBUG_PRINT("Pos = [%f, %f, %f] \n\r", pos[0], pos[1], pos[2]);
 
+    //Save final result to log variable
 	Pr[0] = Pr_tmp[0];
 	Pr[1] = Pr_tmp[1];
 	Pr[2] = Pr_tmp[2];
 	Pr[3] = Pr_tmp[3];
+  
     vTaskDelay(xDelay2);
   }
 }
@@ -163,6 +169,7 @@ void rescale_ADC(float *adc, float *P, int samples, float Vref, int adc_res){
     }
 }
 
+//Perform the FFT to retriee the Pr from different light sources
 void fft_routine_cmsis(float *P, int samples, float *Pr, int n_leds){
 
 	//Instances
@@ -200,7 +207,7 @@ void distance_calc(float *Pr, float *D, float m, float A_pd, float Pt, float h, 
 	//DEBUG_PRINT("D = [%f, %f, %f, %f ] \n\r", D[0], D[1], D[2], D[3]);
 }
 
-//Obtain the 2D position using the Most Likelihood Estimation
+//Obtain the 2D position using the Most Likelihood Estimation method
 void calc_position_MLE(float *X, float *Y, float h, float *D, float *pos, int n_leds){
 
 	//Construct A matrix for MLE (array format)
