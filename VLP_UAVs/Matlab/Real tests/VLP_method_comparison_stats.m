@@ -1,5 +1,9 @@
-%Script that compares 3D RSS based methods and computes statistics from 
-%different tests
+%This script compares the distance error and computes statistics of the 
+%trajectory of a drone accros 8 different flight tests for Firefly and two
+%SoA methods as described in the thesis document.
+%
+% Ricardo Ampudia <r.ampudia15@gmail.com>
+% Last modification: August 2021
 
 %Reset workspace
 clc;
@@ -24,17 +28,12 @@ Rx = rx_center;
 
 %Light channel parameters
 m=14; %datasheet
-k=1;  %optical gain
 Pt=2.7*0.5; %Pnom*Duty (driving LEDs at 2.7W instead of 4.7W)
-
-
-%m=12; %Lambertian order
-%k=0.47; %Calibration factor to account for lateral error deviation
 Aeff=5.2; %[mm^2]
-%Pt=2; %[Watts]
-%A=[0.86; 1.06; 1.06; 1.29]; %Calibration of individual LEDs intensity
-A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity
+k=1;  %not used
+A=[1; 1; 1; 1]; %Calibration of individual LEDs intensity (not used)
 
+%Containers to store intermediate results
 all_mean = [];
 all_median= [];
 all_max = [];
@@ -65,14 +64,13 @@ for test=1:8
             load("data/logcurve_t8.mat")  
     end
           
-
     %Save logged data to local variables
         %x,y,z,roll,pitch,yaw
     Rx_time_state = xyzrpy.time;
     Rx_x = xyzrpy.x;
     Rx_y = xyzrpy.y;
     Rx_z = xyzrpy.z;
-   %Rotate 90° so yaw is centered at 0°
+        %Rotate 90° so yaw is centered at 0°
    Rx_roll = xyzrpy.pitch;
    Rx_pitch = -xyzrpy.roll;
    Rx_yaw = xyzrpy.yaw-90;
@@ -112,7 +110,6 @@ for test=1:8
 
     %Determine acceleration bias and set as constant
     acc_bias=[mean(Rx_ax(1:40)); mean(Rx_ay(1:40)); mean(Rx_az(1:40))];
-    %acc_bias=[mean(Rx_ax); mean(Rx_ay); mean(Rx_az)];
 
     %Time parameters of the simulation 
     start_time = round(Rx_time_state(1)/10)*10;
@@ -174,18 +171,13 @@ for test=1:8
     h_bar0 = 0.2;
     old_h_bar0 = 0.2;
     pz0=0.2;
-    alpha=0.003; %Drift correction
-     periodic = 0;
+    epsilon=0.003; %For long-term drift correction
+    periodic = 0; %(not used)
     
     %Complementary filter gains, kc for z
     f=1; %Larger f means I trust the accelerometer more than the barometer
     kc=[1.4/f,1/f];
-    
-%     f=0.05; %Larger f means I trust the accelerometer more than the barometer
-%     sigma_w = std(Rx_az(1:40));
-%     sigma_v = std(Rx_bar(1:40));
-%     kc = (1/f)*[sqrt((2*sigma_w)/sigma_v); sigma_w/sigma_v];
-    
+
     u=0; %Semaphore used to enable complementary filter calculation
     
 
@@ -216,7 +208,7 @@ for t=start_time:t_step:end_time %Time in seconds
         if (t == round(Rx_time_acc(acc_ctr)/10)*10)
             dt=(Rx_time_acc(acc_ctr)-Rx_time_acc(acc_ctr-1))/1000;         
             %Acceleration calculation with rotation matrix and moving
-            %average filter of L=5 (forgive the ugly implementation)
+            %average filter of L=5 (ugly implementation)
             acc = rotation([Rx_roll(state_ctr);Rx_pitch(state_ctr);Rx_yaw(state_ctr)])*[0;0;
                 (((Rx_az(acc_ctr)+Rx_az(acc_ctr-1)+Rx_az(acc_ctr-2) +Rx_az(acc_ctr-3) +Rx_az(acc_ctr-4))/5)-acc_bias(3))*9.81];
             ax = acc(1);
@@ -234,7 +226,7 @@ for t=start_time:t_step:end_time %Time in seconds
                     %Long term drift correction
                         %Correct only if VLP can be trusted
                     if (Rx_roll(state_ctr) < 3 && Rx_pitch(state_ctr) < 3)% && periodic == 10)
-                        h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-alpha) + alpha*best_LLS(3);
+                        h_bar = (h_bar + (h_bar0-old_h_bar0))*(1-epsilon) + epsilon*best_LLS(3);
                         periodic = 0;
                     else
                         h_bar = (h_bar + (h_bar0-old_h_bar0));
@@ -248,8 +240,8 @@ for t=start_time:t_step:end_time %Time in seconds
         %Update complementary filter
         if u==1
             %Z estimate
-            pz = pz + vz*dt + kc(1)*dt*(h_bar - pz) + (dt/2)*kc(2)*(h_bar - pz) + (dt/2)*(az*dt); %delta pos with fused bar and acc data
-
+            pz = pz + vz*dt + kc(1)*dt*(h_bar - pz) + (dt/2)*kc(2)*(h_bar - pz) + (dt/2)*(az*dt);
+            
             %vn = vn-1 + k*T(xp-x1) + (T*az)
             vz = vz + kc(2)*dt*(h_bar - pz) + (az*dt); 
             
@@ -279,7 +271,8 @@ for t=start_time:t_step:end_time %Time in seconds
                 r(i) = sqrt(D_est(i)^2 - h_fus^2);
             end
 
-            %Calculate position with different methods           
+            %Calculate position with different methods 
+            
             %a) 2D + h MLE method
             [MLE_est_2D] = MLE_method_2D(r,X,Y);
             
@@ -294,7 +287,6 @@ for t=start_time:t_step:end_time %Time in seconds
             
             for i=1:4
                 D_est2(i)= sqrt( (k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i)));
-                %D_est2(i)= sqrt( (Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))*Gr(inc_angle(i))); %Lambertian model
             end 
             
             %Horizontal distance for 2D
@@ -317,8 +309,7 @@ for t=start_time:t_step:end_time %Time in seconds
             best_res = 100;
             for h=0:0.01:2
                 %Obtain D(h)
-                D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr); 
-                    
+                D_est = distance_est_parallel(m, k, Aeff, h, Pt, Pr);                  
                 %Obtain 2D position
                 LLS_est_2D = LLS_method_2D(D_est,X,Y);
                 %Take positive solution and height estimation
@@ -334,25 +325,6 @@ for t=start_time:t_step:end_time %Time in seconds
                     best_h=h;
                 end
             end
-            %%%%%%%%%%%%%%%%%%%%%
-            %Uncomment to introduce tilt information to the 2D+Indirect H
-%              for i=1:4
-%                 inc_angle(i) = acosd((xr-X(i))*cosd(Rx_roll(state_ctr))*sind(Rx_pitch(state_ctr)) + ...
-%                 (yr-Y(i))*sind(Rx_roll(state_ctr))*sind(Rx_pitch(state_ctr)) + (best_h - Z(i))*cosd(Rx_pitch(state_ctr))/best_D(i));
-%              end
-%             
-%             for i=1:4
-%                 D_est2(i)= sqrt( (k*Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((best_h/best_D(i)))^m)*cosd(inc_angle(i)));
-%                 %D_est2(i)= sqrt( (Pt*(m+1)*Aeff/(Pr(i)*2*pi))*(((h_fus/D_est(i)))^m)*cosd(inc_angle(i))*Gr(inc_angle(i))); %Lambertian model
-%             end 
-%             
-%             if(sum(isnan(D_est2))>0) %Check computation is real
-%             else
-%                LLS_est_2D = LLS_method_2D(D_est2,X,Y);
-%                LLS_est_3D = abs([LLS_est_2D(1); LLS_est_2D(2); best_h]);
-%                best_LLS = LLS_est_3D;
-%             end
-            %%%%%%%%%%%%%%%%%%%%%
             
             %Increase Pr counter
             pr_ctr = pr_ctr + 1;
@@ -369,7 +341,6 @@ for t=start_time:t_step:end_time %Time in seconds
                 PSO_all_err=[PSO_all_err PSO_err];
                 
                 %Save height estimates
-                %h_err = abs(Rx(3) - h_fus); 
                 h_err = abs(Rx(3) - best_LLS(3)); 
                 all_h_err = [all_h_err h_err];
             end
@@ -383,7 +354,6 @@ for t=start_time:t_step:end_time %Time in seconds
         end 
     end
 end
-
     
     %Gather statistics across different tests
     all_mean(1, test) = mean(MLE_all_err);
@@ -426,8 +396,8 @@ hold on
 plot(all_mean(2,:), '-s')
 plot(all_mean(3,:), '-s')
 xlabel('Test number')
-ylabel('Mean error')
-legend('Firefly', '3D PSO', 'Indirect h')
+ylabel('Mean error (m)')
+legend('Firefly', '3D PSO', 'Indirect-H')
 title('Mean error of different methods');
 
 figure(2)
@@ -436,8 +406,8 @@ hold on
 plot(all_median(2,:), '-s')
 plot(all_median(3,:), '-s')
 xlabel('Test number')
-ylabel('Median error')
-legend('Firefly', '3D PSO', 'Indirect h')
+ylabel('Median error (m)')
+legend('Firefly', '3D PSO', 'Indirect-H')
 title('Median error of different methods');
 
 figure(3)
@@ -447,7 +417,7 @@ plot(all_max(2,:), '-s')
 plot(all_max(3,:), '-s')
 xlabel('Test number')
 ylabel('Maximum error')
-legend('Firefly', '3D PSO', 'Indirect h')
+legend('Firefly', '3D PSO', 'Indirect-H')
 title('Maximum error of different methods');
 
 figure(4)
@@ -457,7 +427,7 @@ plot(all_std(2,:), '-s')
 plot(all_std(3,:), '-s')
 xlabel('Test number')
 ylabel('Standard deviation of the error')
-legend('Firefly', '3D PSO', 'Indirect h')
+legend('Firefly', '3D PSO', 'Indirect-H')
 title('Standard deviation of error of different methods');
 
 green= [0.4660, 0.6740, 0.1880];
@@ -466,6 +436,7 @@ red=[0.8500, 0.3250, 0.0980];
 grey=[0.25, 0.25, 0.25];
 
 hold off
+%Mean error plot
 figure(5)
 x1 = 1:8;
 y1 = all_mean(1,:);
@@ -486,7 +457,7 @@ ylabel('Location error (m)', 'FontSize', 16);
 u(1)=plot(NaN,NaN,'o', 'Color', red, 'MarkerSize', 10, 'LineWidth', 1.8);
 u(2)=plot(NaN,NaN,'*', 'Color', blue, 'MarkerSize', 12, 'LineWidth', 1.4);
 u(3)=plot(NaN,NaN,'x', 'Color', grey, 'MarkerSize', 12, 'MarkerFace', grey, 'LineWidth', 1.8);
-legend(u, 'Firefly', 'Indirect-H [19] ', '3D PSO [28]', 'FontSize', 16)
+legend(u, 'Firefly', 'Indirect-H [12] ', '3D PSO [28]', 'FontSize', 16)
 %title('Mean-error plots', 'FontSize', 24);
 set(gca,'FontSize',16)
 xlim([0.5 8.5])
@@ -496,30 +467,6 @@ width=900;
 set(gcf,'position',[0,0,width,height])
 grid on
 grid minor
-
-% figure(6)
-% x1 = 1:8;
-% y1 = all_mean(1,:);
-% yneg1=all_mean(1,:)-all_min(1,:);
-% ypos1=all_mean(1,:)-all_max(1,:);
-% errorbar(x1-0.1,y1,yneg1,ypos1,'s', 'Color', red, 'LineWidth', 3, 'MarkerSize',12)
-% hold on
-% y3 = all_mean(3,:);
-% yneg3=all_mean(3,:)-all_min(3,:);
-% ypos3=all_mean(3,:)-all_max(3,:);
-% errorbar(x1+0.1,y3,yneg3,ypos3,'s', 'Color', blue, 'LineWidth', 3, 'MarkerSize',12)
-% xlabel('Test number', 'FontSize', 16);
-% ylabel('Error (m)', 'FontSize', 16);
-% legend('2D+Direct H', '2D+Indirect H', 'FontSize', 16);
-% %title('Mean-error plots', 'FontSize', 24);
-% set(gca,'FontSize',16)
-% xlim([0.5 8.5])
-% ylim([0 0.8])
-% height=500;
-% width=900;
-% set(gcf,'position',[0,0,width,height])
-% grid on
-% grid minor
 
 %Estimate distance assuming parallel Tx/Rx
 function D_est = distance_est_parallel(m, k, Aeff, h_est, Pt, Pr)
@@ -554,6 +501,7 @@ function [LLS_est] = LLS_method_2D(D,X,Y)
     LLS_est=inv(A'*A)*A'*b;
 end
 
+%Rotation matrix according to the ENU convention
 function R = rotation(angles)
     r = deg2rad(angles(1)); %roll in radians
     p = deg2rad(angles(2)); %pitch in radians
@@ -566,6 +514,7 @@ function R = rotation(angles)
    R=yaw*pitch*roll;
 end
 
+%Objetive function for Indirect-H
 function sum=obj_func(est,D,X,Y,Z)
     sum=0;  
     for i=1:length(X)
@@ -575,6 +524,7 @@ function sum=obj_func(est,D,X,Y,Z)
     
 end
 
+%Objetive function for 3D PSO
 function sum=obj_func_pso(est,Pr,X,Y,Z, Pt, Apd, m, k)
     sum=0;  
     C=k*Apd*(m+1)/(2*pi);
