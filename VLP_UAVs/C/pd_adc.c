@@ -99,32 +99,32 @@ bool pdAdcTaskTest() {
 //Sample data from the PD and execute FFT
 static void pdAdcTask(void* parameters) {
 
-  //Declarations
-  int arr_pos = 0;
-  float h; //Height in m
+//Declarations
+int arr_pos = 0;
+float h; //Height in m
 
-  DEBUG_PRINT("FFT test function is running!");
-  const TickType_t xDelay =  1 / portTICK_PERIOD_MS;
-  const TickType_t xDelay2 =  20 / portTICK_PERIOD_MS;
+DEBUG_PRINT("FFT test function is running!");
+const TickType_t xDelay =  1 / portTICK_PERIOD_MS;
+const TickType_t xDelay2 =  20 / portTICK_PERIOD_MS;
 
-  //Initialize frequency index
-  for(int i=0; i<N_LEDS; i++){
-	  freq_index[i] = f[i]*SAMPLES/SAMPLING_FREQ;
-  }
+//Initialize frequency index
+for(int i=0; i<N_LEDS; i++){
+    freq_index[i] = f[i]*SAMPLES/SAMPLING_FREQ;
+}
 
-  //Initialize X,Y.Z coordinate arrays for LEDs
-  //for (int i=0; i<N_LEDS; i++) {
-  float X[N_LEDS] = {Tx1[0], Tx2[0], Tx3[0], Tx4[0]};
-  float Y[N_LEDS] = {Tx1[1], Tx2[1], Tx3[1], Tx4[1]};
-  float Z[N_LEDS] = {Tx1[2], Tx2[2], Tx3[2], Tx4[2]};
+//Initialize X,Y.Z coordinate arrays for LEDs
+//for (int i=0; i<N_LEDS; i++) {
+float X[N_LEDS] = {Tx1[0], Tx2[0], Tx3[0], Tx4[0]};
+float Y[N_LEDS] = {Tx1[1], Tx2[1], Tx3[1], Tx4[1]};
+float Z[N_LEDS] = {Tx1[2], Tx2[2], Tx3[2], Tx4[2]};
 
-  adcInit();
+adcInit();
 
-  while (true) {
+while (true) {
 
-	//Acquire ADC samples
+    //Acquire ADC samples
    	for(int i=0; i<SAMPLES; i++){
-   		adc_signal[i] = analogRead(DECK_GPIO_TX2);
+        adc_signal[i] = analogRead(DECK_GPIO_TX2);
    		vTaskDelay(xDelay);
    	}
 
